@@ -1,0 +1,2776 @@
+Disassembly Listing for Binary-CLock
+Generated From:
+C:/Users/LucWe/OneDrive/Desktop/MPLABXProjects - Kopie/Binary-CLock.X/dist/default/debug/Binary-CLock.X.debug.elf
+02.12.2021 10:31:51
+
+---  C:/Users/LucWe/OneDrive/Desktop/MPLABXProjects - Kopie/Binary-CLock.X/Main.c  ----------------------
+1:             /*
+2:             --------------------------------------------------------------------------------
+3:             File: Main.c
+4:             Title: Binary-clock with 
+5:             Controller: PIC18F4520
+6:             Frequency: 4 MHz (PLL disabled)
+7:             Compiler: XC8 ver. 2.32
+8:             MPLAB X 5.50
+9:             Version: 1.2
+10:            Date: 01.12.2021
+11:            Author: Luc-Wshr, AndreiCosovan, bkubon
+12:            --------------------------------------------------------------------------------
+13:            */
+14:            
+15:            #include "Definitions.h"
+16:            #include <stdio.h>
+17:            
+18:            //----------------------- Define constant Values -------------------------------
+19:            #define TMR1ResetValue  65535       // Set maximal possible Value for Timer1 before the counting starts from zero again (16-Bit counter register)
+20:            #define ONE_MILISECOND      1000    // 
+21:            #define TIMER_1_CORRECTION    35    // 
+22:            
+23:            //----------------------- Set subroutine Definitions ------------------------
+24:            void display_binary(int num);
+25:            
+26:            // Define Global Variables as integers (Miliseconds, seconds, minutes and hours)
+27:            int Milsecs = 0;
+28:            int Seconds = -1;
+29:            int Minutes = 0;
+30:            int Hours = 0;
+31:            
+32:            //----------------------- Timer Interrupts ------------------------------------- 
+0008  8251     BSF btemp, 1, ACCESS
+0958  0006     POP
+33:            void __interrupt(high_priority) timer_overflow_interrupt(void){
+34:                // check for timer-1 interrupt flag
+097A  A09E     BTFSS PIR1, 0, ACCESS
+35:                if(TMR1IF){
+36:                    // reset timer-1
+0988  909E     BCF PIR1, 0, ACCESS
+37:                    TMR1IF = 0;
+098A  0EFC     MOVLW 0xFC
+38:                    TMR1 = TMR1ResetValue - ONE_MILISECOND + TIMER_1_CORRECTION;
+39:                    
+40:                    // Increase clock time + Time-Overflow-Handler
+0992  4A44     INFSNZ Milsecs, F, ACCESS
+41:                    Milsecs++;
+0996  BE45     BTFSC 0x45, 7, ACCESS
+42:                    if(Milsecs >= 1000){                 // If Milsecs gets equal or over 1 sec
+09B2  0E00     MOVLW 0x0
+43:                        Milsecs = 0;                     // Reset Milsecs to 0
+09BA  4A4F     INFSNZ Seconds, F, ACCESS
+44:                        Seconds++;                       // Add 1 sec to seconds
+09BE  BE50     BTFSC 0x50, 7, ACCESS
+45:                        if(Seconds >= 60){               // If seconds gets equal or over 60 seconds
+09DA  0E00     MOVLW 0x0
+46:                            Seconds = 0;                 // Reset seconds to 0
+09E2  4A42     INFSNZ Minutes, F, ACCESS
+47:                            Minutes++;                   // Add 1 min to minutes
+09E6  BE43     BTFSC 0x43, 7, ACCESS
+48:                            if(Minutes >= 60){           // If minutes gets equal or over 60 minutes
+0A02  0E00     MOVLW 0x0
+49:                                Minutes = 0;             // Reset minutes to 0
+0A0A  0E01     MOVLW 0x1
+50:                                Hours = (Hours + 1) % 24; // Add 1 hour to Hours and whole modulo 24 to avoid times over 24 hours
+51:                            }
+52:                        }
+53:                        
+54:                        // print clock to console every Seconds
+0A2A  C040     MOVFF Hours, num
+55:                        display_binary(Hours);
+0A36  0E04     MOVLW 0x4
+56:                        printf(":");
+0A42  C042     MOVFF Minutes, num
+57:                        display_binary(Minutes);
+0A4E  0E04     MOVLW 0x4
+58:                        printf(":");
+0A5A  C04F     MOVFF Seconds, num
+59:                        display_binary(Seconds);
+0A66  0E02     MOVLW 0x2
+60:                        printf("\n");
+61:                        
+62:                        // output clock on pins every Seconds
+0A72  C04F     MOVFF Seconds, LATA
+63:                        LATA = (unsigned char)Seconds;
+0A76  C042     MOVFF Minutes, LATB
+64:                        LATB = (unsigned char)Minutes;
+0A7A  C040     MOVFF Hours, LATD
+65:                        LATD = (unsigned char)Hours;
+66:                    }
+67:                }
+68:            
+69:                return;
+0A7E  C037     MOVFF 0x37, TABLAT
+70:            }
+71:            
+72:            void main(void) {
+73:                //----------------------- PORT RELATED IO ----------------------------------
+74:               
+0EE2  0E0F     MOVLW 0xF
+0EE4  12C1     IORWF ADCON1, F, ACCESS
+75:                ADCON1bits.PCFG = 0b1111;   //Change PORTA from analog to digital -> Configure as digital pins
+76:                
+0EE6  0E00     MOVLW 0x0
+0EE8  6E92     MOVWF TRISA, ACCESS
+77:                TRISA = 0;                  // Set PORTA as Output for the Clock (seconds)
+0EEA  0E00     MOVLW 0x0
+0EEC  6E93     MOVWF TRISB, ACCESS
+78:                TRISB = 0;                  // Set PORTB as Output for the Clock (minutes)
+0EEE  0E00     MOVLW 0x0
+0EF0  6E95     MOVWF TRISD, ACCESS
+79:                TRISD = 0;                  // Set PORTD as Output for the Clock (hours)
+80:                
+0EF2  8094     BSF TRISC, 0, ACCESS
+81:                TRISCbits.RC0 = 1;          // Set RC0 pin of PORTC as input to register pulse from reset button
+82:                
+83:                // turn off all leds
+0EF4  0E00     MOVLW 0x0
+0EF6  6E89     MOVWF LATA, ACCESS
+84:                LATA = 0;
+0EF8  0E00     MOVLW 0x0
+0EFA  6E8A     MOVWF LATB, ACCESS
+85:                LATB = 0;
+0EFC  0E00     MOVLW 0x0
+0EFE  6E8C     MOVWF LATD, ACCESS
+86:                LATD = 0;
+87:                
+88:                
+89:                //----------------------- CONSOLE IO ---------------------------------------
+90:                
+91:                // initialize uart (used for printing)
+0F00  8E94     BSF TRISC, 7, ACCESS
+92:                TRISCbits.RC7 = 1;
+0F02  8C94     BSF TRISC, 6, ACCESS
+93:                TRISCbits.RC6 = 1;
+0F04  8AAC     BSF TXSTA, 5, ACCESS
+94:                TXSTAbits.TXEN = 1;
+0F06  8EAB     BSF RCSTA, 7, ACCESS
+95:                RCSTAbits.SPEN = 1;
+96:                
+0F08  0E01     MOVLW 0x1
+0F0A  0100     MOVLB 0x0
+0F0C  6FBC     MOVWF fmt, BANKED
+0F0E  0E06     MOVLW 0x6
+0F10  6FBD     MOVWF 0xBD, BANKED
+0F12  ECCB     CALL 0xF96, 0
+0F14  F007     NOP
+97:                printf("\n\n");
+98:                
+99:                
+100:               //----------------------- INTERRUPT SETUP ----------------------------------
+101:               
+102:               // enable global interrupts
+0F16  0EC0     MOVLW 0xC0
+0F18  6EF2     MOVWF INTCON, ACCESS
+103:               INTCON = 0b11000000;
+104:           
+105:               // enable timer-1 interrupt
+0F1A  809D     BSF PIE1, 0, ACCESS
+106:               PIE1bits.TMR1IE = 1;
+107:           
+108:               // setup timer
+0F1C  80CD     BSF T1CON, 0, ACCESS
+109:               T1CONbits.TMR1ON = 1;
+110:               // reset timer
+111:              // TMR1IF = 0;
+112:              // TMR1 = TMR1ResetValue - ONE_MILISECOND + TIMER_1_CORRECTION;
+113:           
+114:               while(1){
+0F1E  A082     BTFSS PORTC, 0, ACCESS
+0F20  EF94     GOTO 0xF28
+0F22  F007     NOP
+0F24  EF96     GOTO 0xF2C
+0F26  F007     NOP
+0F28  EF8F     GOTO 0xF1E
+0F2A  F007     NOP
+115:                   if(PORTCbits.RC0){
+0F2C  0E00     MOVLW 0x0
+0F2E  6E45     MOVWF 0x45, ACCESS
+0F30  0E00     MOVLW 0x0
+0F32  6E44     MOVWF Milsecs, ACCESS
+116:                       Milsecs = 0;
+0F34  684F     SETF Seconds, ACCESS
+0F36  6850     SETF 0x50, ACCESS
+117:                       Seconds = -1;
+0F38  0E00     MOVLW 0x0
+0F3A  6E43     MOVWF 0x43, ACCESS
+0F3C  0E00     MOVLW 0x0
+0F3E  6E42     MOVWF Minutes, ACCESS
+118:                       Minutes = 0;
+0F40  0E00     MOVLW 0x0
+0F42  6E41     MOVWF 0x41, ACCESS
+0F44  0E00     MOVLW 0x0
+0F46  6E40     MOVWF Hours, ACCESS
+0F48  EF8F     GOTO 0xF1E
+0F4A  F007     NOP
+0F4C  EF07     GOTO 0xE
+0F4E  F000     NOP
+119:                       Hours = 0;
+120:                   }
+121:               }
+122:               // turn of timer-1 (actually never called)
+123:               T1CONbits.TMR1ON = 0;
+124:               
+125:               return;
+126:           }
+127:           
+128:           // used for printf
+0FE4  0100     MOVLB 0x0
+0FE6  6FA0     MOVWF __pcstackBANK0, BANKED
+0FFC  6E01     MOVWF __pcstackCOMRAM, ACCESS
+129:           void putch(unsigned char data) {
+130:               while(!PIR1bits.TXIF){
+131:                   continue;
+0FE8  A89E     BTFSS PIR1, 4, ACCESS
+0FEA  EFF9     GOTO 0xFF2
+0FEC  F007     NOP
+0FEE  EFFB     GOTO 0xFF6
+0FF0  F007     NOP
+0FF2  EFF4     GOTO 0xFE8
+0FF4  F007     NOP
+0FFE  A89E     BTFSS PIR1, 4, ACCESS
+1000  EF04     GOTO 0x1008
+1002  F008     NOP
+1004  EF06     GOTO 0x100C
+1006  F008     NOP
+1008  EFFF     GOTO 0xFFE
+100A  F007     NOP
+132:               }
+0FF6  C0A0     MOVFF __pcstackBANK0, TXREG
+0FF8  FFAD     NOP
+100C  C001     MOVFF __pcstackCOMRAM, TXREG
+100E  FFAD     NOP
+133:               TXREG = data;
+0FFA  0012     RETURN 0
+1010  0012     RETURN 0
+134:           }
+135:           
+136:           //----------------------- USART over Terminal ----------------------------------
+137:           void display_binary(int num){
+138:               // initialize output String
+0B66  EE20     LFSR 2, 0x46
+0B68  F046     NOP
+0B6A  EE10     LFSR 1, 0x25
+0B6C  F025     NOP
+0B6E  0E08     MOVLW 0x8
+0B70  CFDB     MOVFF PLUSW2, PLUSW1
+0B72  FFE3     NOP
+0B74  06E8     DECF WREG, F, ACCESS
+0B76  E2FC     BC 0xB70
+139:               char binary[] = "00000000";
+140:               
+141:               // edit String (dezimal to binary conversion)
+0B78  0E00     MOVLW 0x0
+0B7A  6E2F     MOVWF 0x2F, ACCESS
+0B7C  0E00     MOVLW 0x0
+0B7E  6E2E     MOVWF i, ACCESS
+142:               for(int i=0;i<8;i++){
+0B80  A021     BTFSS num, 0, ACCESS
+0B82  EFC5     GOTO 0xB8A
+0B84  F005     NOP
+0B86  EFC7     GOTO 0xB8E
+0B88  F005     NOP
+0B8A  EFD9     GOTO 0xBB2
+0B8C  F005     NOP
+143:                   if(num % 2 == 1){
+0B8E  0E07     MOVLW 0x7
+0B90  6E23     MOVWF 0x23, ACCESS
+0B92  0E00     MOVLW 0x0
+0B94  6E24     MOVWF 0x24, ACCESS
+0B96  502E     MOVF i, W, ACCESS
+0B98  5E23     SUBWF 0x23, F, ACCESS
+0B9A  502F     MOVF 0x2F, W, ACCESS
+0B9C  5A24     SUBWFB 0x24, F, ACCESS
+0B9E  0E25     MOVLW 0x25
+0BA0  2423     ADDWF 0x23, W, ACCESS
+0BA2  6ED9     MOVWF FSR2, ACCESS
+0BA4  0E00     MOVLW 0x0
+0BA6  2024     ADDWFC 0x24, W, ACCESS
+0BA8  6EDA     MOVWF FSR2H, ACCESS
+0BAA  0E31     MOVLW 0x31
+0BAC  6EDF     MOVWF INDF2, ACCESS
+144:                       binary[7 - i] = '1';
+0BAE  EFE9     GOTO 0xBD2
+0BB0  F005     NOP
+145:                   }else{
+0BB2  0E07     MOVLW 0x7
+0BB4  6E23     MOVWF 0x23, ACCESS
+0BB6  0E00     MOVLW 0x0
+0BB8  6E24     MOVWF 0x24, ACCESS
+0BBA  502E     MOVF i, W, ACCESS
+0BBC  5E23     SUBWF 0x23, F, ACCESS
+0BBE  502F     MOVF 0x2F, W, ACCESS
+0BC0  5A24     SUBWFB 0x24, F, ACCESS
+0BC2  0E25     MOVLW 0x25
+0BC4  2423     ADDWF 0x23, W, ACCESS
+0BC6  6ED9     MOVWF FSR2, ACCESS
+0BC8  0E00     MOVLW 0x0
+0BCA  2024     ADDWFC 0x24, W, ACCESS
+0BCC  6EDA     MOVWF FSR2H, ACCESS
+0BCE  0E30     MOVLW 0x30
+0BD0  6EDF     MOVWF INDF2, ACCESS
+146:                       binary[7 - i] = '0';
+147:                   }
+0BD2  C021     MOVFF num, __pcstackCOMRAM
+0BD4  F001     NOP
+0BD6  C022     MOVFF 0x22, ___rparam_used
+0BD8  F002     NOP
+0BDA  0E00     MOVLW 0x0
+0BDC  6E04     MOVWF fp, ACCESS
+0BDE  0E02     MOVLW 0x2
+0BE0  6E03     MOVWF __activetblptr, ACCESS
+0BE2  EC51     CALL 0xAA2, 0
+0BE4  F005     NOP
+0BE6  C001     MOVFF __pcstackCOMRAM, num
+0BE8  F021     NOP
+0BEA  C002     MOVFF ___rparam_used, 0x22
+0BEC  F022     NOP
+148:                   num /= 2;
+0BEE  4A2E     INFSNZ i, F, ACCESS
+0BF0  2A2F     INCF 0x2F, F, ACCESS
+0BF2  BE2F     BTFSC 0x2F, 7, ACCESS
+0BF4  EF05     GOTO 0xC0A
+0BF6  F006     NOP
+0BF8  502F     MOVF 0x2F, W, ACCESS
+0BFA  E109     BNZ 0xC0E
+0BFC  0E08     MOVLW 0x8
+0BFE  5C2E     SUBWF i, W, ACCESS
+0C00  A0D8     BTFSS STATUS, 0, ACCESS
+0C02  EF05     GOTO 0xC0A
+0C04  F006     NOP
+0C06  EF07     GOTO 0xC0E
+0C08  F006     NOP
+0C0A  EFC0     GOTO 0xB80
+0C0C  F005     NOP
+149:               }
+150:               
+151:               // output to console
+0C0E  0E25     MOVLW 0x25
+0C10  6E1D     MOVWF fmt, ACCESS
+0C12  0E00     MOVLW 0x0
+0C14  6E1E     MOVWF 0x1E, ACCESS
+0C16  ECDF     CALL 0xFBE, 0
+0C18  F007     NOP
+152:               printf(binary);
+153:               
+154:               return;
+0C1A  0012     RETURN 0
+155:           }
+---  C:/Users/LucWe/AppData/Local/Temp/xcAs4bs.s  -------------------------------------------------------
+0F50  0E12     MOVLW 0x12
+0F52  6EF6     MOVWF TBLPTR, ACCESS
+0F54  0E10     MOVLW 0x10
+0F56  6EF7     MOVWF TBLPTRH, ACCESS
+0F58  0E00     MOVLW 0x0
+0F5A  6EF8     MOVWF TBLPTRU, ACCESS
+0F5C  EE00     LFSR 0, 0x46
+0F60  EE10     LFSR 1, 0xB
+0F64  0009     TBLRD*+
+0F66  CFF5     MOVFF TABLAT, POSTINC0
+0F6A  50E5     MOVF POSTDEC1, W, ACCESS
+0F6C  50E1     MOVF FSR1, W, ACCESS
+0F6E  E1FA     BNZ 0xF64
+0F70  EE00     LFSR 0, 0x80
+0F74  0E20     MOVLW 0x20
+0F76  6AEE     CLRF POSTINC0, ACCESS
+0F78  06E8     DECF WREG, F, ACCESS
+0F7A  E1FD     BNZ 0xF76
+0F7C  EE00     LFSR 0, 0x38
+0F80  0E0E     MOVLW 0xE
+0F82  6AEE     CLRF POSTINC0, ACCESS
+0F84  06E8     DECF WREG, F, ACCESS
+0F86  E1FD     BNZ 0xF82
+0F88  9051     BCF btemp, 0, ACCESS
+0F8A  9251     BCF btemp, 1, ACCESS
+0F8C  0E00     MOVLW 0x0
+0F8E  6EF8     MOVWF TBLPTRU, ACCESS
+0F90  0100     MOVLB 0x0
+0F92  EF71     GOTO 0xEE2
+0008  8251     BSF btemp, 1, ACCESS
+---  C:/Program Files/Microchip/xc8/v2.32/pic/sources/c99/common/printf.c  ------------------------------
+1:             #include <stdio.h>
+2:             #include <stdarg.h>
+3:             #include "stdio_impl.h"
+4:             
+5:             int printf(const char *restrict fmt, ...)
+6:             {
+7:             	int ret;
+8:             	va_list ap;
+9:             	va_start(ap, fmt);
+0F96  0EBE     MOVLW 0xBE
+0F98  0100     MOVLB 0x0
+0F9A  6FBE     MOVWF ap, BANKED
+0F9C  0E00     MOVLW 0x0
+0F9E  6FBF     MOVWF 0xBF, BANKED
+0FBE  0E1F     MOVLW 0x1F
+10:            	ret = vfprintf(stdout, fmt, ap);
+0FA0  0E00     MOVLW 0x0
+0FA2  6FB4     MOVWF fp, BANKED
+0FA4  0E00     MOVLW 0x0
+0FA6  6FB5     MOVWF 0xB5, BANKED
+0FA8  C0BC     MOVFF fmt, fmt
+0FAA  F0B6     NOP
+0FAC  C0BD     MOVFF 0xBD, 0xB7
+0FAE  F0B7     NOP
+0FB0  0EBE     MOVLW 0xBE
+0FB2  6FB8     MOVWF ap, BANKED
+0FB4  0E00     MOVLW 0x0
+0FB6  6FB9     MOVWF 0xB9, BANKED
+0FB8  ECFD     CALL 0xDFA, 0
+0FBA  F006     NOP
+0FC6  0E00     MOVLW 0x0
+0FC8  6E15     MOVWF fp, ACCESS
+0FCA  0E00     MOVLW 0x0
+0FCC  6E16     MOVWF 0x16, ACCESS
+0FCE  C01D     MOVFF fmt, fmt
+0FD0  F017     NOP
+0FD2  C01E     MOVFF 0x1E, 0x18
+0FD4  F018     NOP
+0FD6  0E1F     MOVLW 0x1F
+0FD8  6E19     MOVWF ap, ACCESS
+0FDA  0E00     MOVLW 0x0
+0FDC  6E1A     MOVWF 0x1A, ACCESS
+0FDE  EC38     CALL 0xE70, 0
+0FE0  F007     NOP
+11:            	va_end(ap);
+12:            	return ret;
+13:            }
+0FBC  0012     RETURN 0
+0FE2  0012     RETURN 0
+---  C:/Program Files/Microchip/xc8/v2.32/pic/sources/c99/common/nf_fputc.c  ----------------------------
+1:             #include <stdio.h>
+2:             
+3:             #include "stdio_impl.h"
+4:             
+5:             #ifdef STDIO_NO_FILE_IO
+6:             /* "No file system" fputc */
+7:             
+8:             int fputc(int c, FILE *fp)
+9:             {
+10:                extern void putch(char);
+11:            
+12:                if ((fp == stdout) || (fp == stderr)) {
+0CCC  0100     MOVLB 0x0
+0CCE  51A3     MOVF fp, W, BANKED
+0CD0  11A4     IORWF 0xA4, W, BANKED
+0CD2  B4D8     BTFSC STATUS, 2, ACCESS
+0CD4  EF6E     GOTO 0xCDC
+0CD6  F006     NOP
+0CD8  EF70     GOTO 0xCE0
+0CDA  F006     NOP
+0CDC  EF79     GOTO 0xCF2
+0CDE  F006     NOP
+0CE0  51A3     MOVF fp, W, BANKED
+0CE2  11A4     IORWF 0xA4, W, BANKED
+0CE4  A4D8     BTFSS STATUS, 2, ACCESS
+0CE6  EF77     GOTO 0xCEE
+0CE8  F006     NOP
+0CEA  EF79     GOTO 0xCF2
+0CEC  F006     NOP
+0CEE  EF7E     GOTO 0xCFC
+0CF0  F006     NOP
+0D64  5004     MOVF fp, W, ACCESS
+13:                    putch((char)c);
+0CF2  51A1     MOVF c, W, BANKED
+0CF4  ECF2     CALL 0xFE4, 0
+0CF6  F007     NOP
+0D88  5002     MOVF ___rparam_used, W, ACCESS
+0D8A  ECFE     CALL 0xFFC, 0
+0D8C  F007     NOP
+14:                } else {
+0CF8  EFB1     GOTO 0xD62
+0CFA  F006     NOP
+0D8E  EFFC     GOTO 0xDF8
+0D90  F006     NOP
+15:            		if((fp->limit == 0) || (fp->count < fp->limit)) {
+0CFC  EE20     LFSR 2, 0x4
+0CFE  F004     NOP
+0D00  51A3     MOVF fp, W, BANKED
+0D02  26D9     ADDWF FSR2, F, ACCESS
+0D04  51A4     MOVF 0xA4, W, BANKED
+0D06  22DA     ADDWFC FSR2H, F, ACCESS
+0D08  50DE     MOVF POSTINC2, W, ACCESS
+0D0A  10DE     IORWF POSTINC2, W, ACCESS
+0D0C  B4D8     BTFSC STATUS, 2, ACCESS
+0D0E  EF8B     GOTO 0xD16
+0D10  F006     NOP
+0D12  EF8D     GOTO 0xD1A
+0D14  F006     NOP
+0D16  EFA8     GOTO 0xD50
+0D18  F006     NOP
+0D1A  EE20     LFSR 2, 0x4
+0D1C  F004     NOP
+0D1E  51A3     MOVF fp, W, BANKED
+0D20  26D9     ADDWF FSR2, F, ACCESS
+0D22  51A4     MOVF 0xA4, W, BANKED
+0D24  22DA     ADDWFC FSR2H, F, ACCESS
+0D26  EE10     LFSR 1, 0x2
+0D28  F002     NOP
+0D2A  51A3     MOVF fp, W, BANKED
+0D2C  26E1     ADDWF FSR1, F, ACCESS
+0D2E  51A4     MOVF 0xA4, W, BANKED
+0D30  22E2     ADDWFC FSR1H, F, ACCESS
+0D32  50DE     MOVF POSTINC2, W, ACCESS
+0D34  5CE6     SUBWF POSTINC1, W, ACCESS
+0D36  50E6     MOVF POSTINC1, W, ACCESS
+0D38  0A80     XORLW 0x80
+0D3A  6FA9     MOVWF 0xA9, BANKED
+0D3C  50DE     MOVF POSTINC2, W, ACCESS
+0D3E  0A80     XORLW 0x80
+0D40  59A9     SUBWFB 0xA9, W, BANKED
+0D42  B0D8     BTFSC STATUS, 0, ACCESS
+0D44  EFA6     GOTO 0xD4C
+0D46  F006     NOP
+0D48  EFA8     GOTO 0xD50
+0D4A  F006     NOP
+0D4C  EFB1     GOTO 0xD62
+0D4E  F006     NOP
+0D92  EE20     LFSR 2, 0x4
+0D94  F004     NOP
+0D96  5004     MOVF fp, W, ACCESS
+0D98  26D9     ADDWF FSR2, F, ACCESS
+0D9A  5005     MOVF counter, W, ACCESS
+0D9C  22DA     ADDWFC FSR2H, F, ACCESS
+0D9E  50DE     MOVF POSTINC2, W, ACCESS
+0DA0  10DE     IORWF POSTINC2, W, ACCESS
+0DA2  B4D8     BTFSC STATUS, 2, ACCESS
+0DA4  EFD6     GOTO 0xDAC
+0DA6  F006     NOP
+0DA8  EFD8     GOTO 0xDB0
+0DAA  F006     NOP
+0DAC  EFF3     GOTO 0xDE6
+0DAE  F006     NOP
+0DB0  EE20     LFSR 2, 0x4
+0DB2  F004     NOP
+0DB4  5004     MOVF fp, W, ACCESS
+0DB6  26D9     ADDWF FSR2, F, ACCESS
+0DB8  5005     MOVF counter, W, ACCESS
+0DBA  22DA     ADDWFC FSR2H, F, ACCESS
+0DBC  EE10     LFSR 1, 0x2
+0DBE  F002     NOP
+0DC0  5004     MOVF fp, W, ACCESS
+0DC2  26E1     ADDWF FSR1, F, ACCESS
+0DC4  5005     MOVF counter, W, ACCESS
+0DC6  22E2     ADDWFC FSR1H, F, ACCESS
+0DC8  50DE     MOVF POSTINC2, W, ACCESS
+0DCA  5CE6     SUBWF POSTINC1, W, ACCESS
+0DCC  50E6     MOVF POSTINC1, W, ACCESS
+0DCE  0A80     XORLW 0x80
+0DD0  6E0A     MOVWF 0xA, ACCESS
+0DD2  50DE     MOVF POSTINC2, W, ACCESS
+0DD4  0A80     XORLW 0x80
+0DD6  580A     SUBWFB 0xA, W, ACCESS
+0DD8  B0D8     BTFSC STATUS, 0, ACCESS
+0DDA  EFF1     GOTO 0xDE2
+0DDC  F006     NOP
+0DDE  EFF3     GOTO 0xDE6
+0DE0  F006     NOP
+0DE2  EFFC     GOTO 0xDF8
+0DE4  F006     NOP
+16:            #pragma warning push
+17:            #pragma warning disable 1498
+18:            			fp->buffer[fp->count] = (char)c;
+19:            #pragma warning pop
+20:            			++fp->count;
+0D50  EE20     LFSR 2, 0x2
+0D52  F002     NOP
+0D54  51A3     MOVF fp, W, BANKED
+0D56  26D9     ADDWF FSR2, F, ACCESS
+0D58  51A4     MOVF 0xA4, W, BANKED
+0D5A  22DA     ADDWFC FSR2H, F, ACCESS
+0D5C  2ADE     INCF POSTINC2, F, ACCESS
+0D5E  0E00     MOVLW 0x0
+0D60  22DD     ADDWFC POSTDEC2, F, ACCESS
+0DE6  EE20     LFSR 2, 0x2
+0DE8  F002     NOP
+0DEA  5004     MOVF fp, W, ACCESS
+0DEC  26D9     ADDWF FSR2, F, ACCESS
+0DEE  5005     MOVF counter, W, ACCESS
+0DF0  22DA     ADDWFC FSR2H, F, ACCESS
+0DF2  2ADE     INCF POSTINC2, F, ACCESS
+0DF4  0E00     MOVLW 0x0
+0DF6  22DD     ADDWFC POSTDEC2, F, ACCESS
+21:            		}
+22:                }
+23:                return (unsigned char)c;
+24:            }
+0D62  0012     RETURN 0
+0DF8  0012     RETURN 0
+25:            
+26:            #endif
+---  C:/Program Files/Microchip/xc8/v2.32/pic/sources/c99/common/doprnt.c  ------------------------------
+1:             /* vfprintf with configurable support for format conversions */
+2:             /* This code is specifically for XC8 */
+3:             #include <ctype.h>
+4:             #include <math.h>
+5:             #include <stdarg.h>
+6:             #include <stddef.h>
+7:             #include <stdint.h>
+8:             #include <stdio.h>
+9:             #include <stdlib.h>
+10:            #include <string.h>
+11:            #include <inline.h>
+12:            
+13:            /* Configuration options */
+14:            #ifdef _VFPF_ALL
+15:            #define _VFPF_CONVERT
+16:            #define _VFPF_FLAGS
+17:            #define _VFPF_WIDTH
+18:            #define _VFPF_PRECISION
+19:            
+20:            #define _VFPF_HH
+21:            #define _VFPF_H
+22:            #define _VFPF_L
+23:            #define _VFPF_LL
+24:            #define _VFPF_J
+25:            #define _VFPF_T
+26:            #define _VFPF_Z
+27:            
+28:            #define _VFPF_A
+29:            #define _VFPF_C
+30:            #define _VFPF_D
+31:            #define _VFPF_E
+32:            #define _VFPF_F
+33:            #define _VFPF_G
+34:            #define _VFPF_O
+35:            #define _VFPF_N
+36:            #define _VFPF_P
+37:            #define _VFPF_S
+38:            #define _VFPF_U
+39:            #define _VFPF_X
+40:            #endif
+41:            
+42:            #ifndef ARRAYSIZE
+43:            #define ARRAYSIZE(a)	(sizeof(a)/sizeof(a[0]))
+44:            #endif
+45:            #ifndef CSTRLEN
+46:            #define CSTRLEN(s)	(ARRAYSIZE(s)-1)
+47:            #endif
+48:            
+49:            /* Flags, precision, width */
+50:            #define MINUS_FLAG (1 << 0)
+51:            #define ZERO_FLAG (1 << 1)
+52:            #define PLUS_FLAG (1 << 2)
+53:            #define SPACE_FLAG (1 << 3)
+54:            #define POUND_FLAG (1 << 4)
+55:            static int flags, prec, width;
+56:            
+57:            #ifdef _VFPF_CONVERT
+58:            /* This buffer must be at least 32 bytes long for this code to be safe */
+59:            /* Output that would exceed buffer capacity is truncated */
+60:            #if defined(_VFPF_A) || defined(_VFPF_E) || defined(_VFPF_F) || defined(_VFPF_G)
+61:            #define DBLEN 80
+62:            #define EXPLEN 5
+63:            #else
+64:            #define DBLEN 32
+65:            #endif
+66:            static char dbuf[DBLEN];
+67:            
+68:            /* Character count */
+69:            static int nout;
+70:            
+71:            /* Output the string in dbuf, padded on the left or right */
+72:            static _INLINE int pad(FILE *fp, char *buf, int p)
+73:            {
+74:                int i, w;
+75:            
+76:                /* Left justify ? Put out string */
+77:                if (flags & MINUS_FLAG) {
+78:                    fputs((const char *)buf, fp);
+79:                }
+80:            
+81:                /* Put out padding */
+82:                w = (p < 0) ? 0 : p;
+83:                i = 0;
+84:                while (i < w) {
+85:                    fputc(' ', fp);
+86:                    ++i;
+87:                }
+88:            
+89:                /* Right justify ? Put out string */
+90:                if (!(flags & MINUS_FLAG)) {
+91:                    fputs((const char *)buf, fp);
+92:                }
+93:            
+94:                return (int)(strlen(buf) + (size_t)w);
+95:            }
+96:            #endif
+97:            
+98:            #ifdef _VFPF_A
+99:            static _INLINE int atoa(FILE *fp, long double f, char c)
+100:           {
+101:               char mode, nmode;
+102:               int d, e, i, m, n, ne, p, pp, sign, t, w;
+103:               long double g, h, l, ou, u;
+104:           
+105:               /* Record sign, get absolute value */
+106:               sign = 0;
+107:               g = f;
+108:               if (g < 0.0) {
+109:                   sign = 1;
+110:                   g = -g;
+111:               }
+112:           
+113:               /* Print sign, prefix */
+114:               n = 0;
+115:               w = width;
+116:               if (sign || (flags & PLUS_FLAG)) {
+117:                   dbuf[n] = sign ? '-' : '+';
+118:                   ++n;
+119:                   --w;
+120:               }
+121:               dbuf[n++] = '0';
+122:               dbuf[n++] = isupper((int)c) ? 'X' : 'x';
+123:           
+124:               /* Catch infinities, NaNs here */
+125:               if (isinf(g)) {
+126:                   if (isupper((int)c)) {
+127:                       strcpy(&dbuf[n], "INF");
+128:                   } else {
+129:                       strcpy(&dbuf[n], "inf");
+130:                   }
+131:                   w -= CSTRLEN("inf");
+132:                   return pad(fp, &dbuf[0], w);
+133:               }
+134:               if (isnan(g)) {
+135:                   if (isupper((int)c)) {
+136:                       strcpy(&dbuf[n], "NAN");
+137:                   } else {
+138:                       strcpy(&dbuf[n], "nan");
+139:                   }
+140:                   w -= CSTRLEN("inf");
+141:                   return pad(fp, &dbuf[0], w);
+142:               }
+143:           
+144:               /* First find the largest power of 2 not larger than number to print */
+145:               u = 1.0;
+146:               e = 0;
+147:               if (!(g == 0.0)) {
+148:                   while (!(g < (u*2.0))) {
+149:                       u = u*2.0;
+150:                       ++e;
+151:                   }
+152:                   while (g < u) {
+153:                       u = u/2.0;
+154:                       --e;
+155:                   }
+156:               }
+157:           
+158:               /* Get precision */
+159:               p = (prec < 0) ? 6 : prec;
+160:           
+161:               /* Hex places, total */
+162:               m = p + 1;
+163:           
+164:               /* Go through the conversion once to get to the rounding step */
+165:               i = 0;
+166:               h = g;
+167:               ou = u;
+168:               while (i < m) {
+169:                   l = floor(h/u);
+170:                   d = (int)l;
+171:                   h -= l*u;
+172:                   u = u/16.0;
+173:                   ++i;
+174:               }
+175:               
+176:               /* Remainder >= halfway ? */
+177:               l = u*8.0;
+178:               if (h < l) {
+179:                   l = 0.0;
+180:               } else {
+181:                   /* On tie choose even number */
+182:                   if ((h == l) && !(d % 2)) {
+183:                       l = 0.0;
+184:                   }
+185:               }
+186:           
+187:               /* Round */
+188:               h = g + l;
+189:               
+190:               /* Convert again, after rounding */
+191:               u = ou;
+192:               ne = 0;
+193:               pp = 0;
+194:               t = 0;
+195:               i = 0;
+196:               while ((i < m) && (n < (DBLEN - EXPLEN))) {
+197:                   l = floor(h/u);
+198:                   d = (int)l;
+199:                   if (!(flags & POUND_FLAG) && !d && (ne < 0)) {
+200:                       ++t;
+201:                   } else {
+202:                       if (!pp && (ne < 0)) {
+203:                           dbuf[n++] = '.';
+204:                           --w;
+205:                           pp = 1;
+206:                       }
+207:                       while (t) {
+208:                           dbuf[n++] = '0';
+209:                           --w;
+210:                           --t;
+211:                       }
+212:                       d = (d < 10) ? (int)'0' + d : (int)'a' + (d - 10);
+213:                       if (isupper((int)c) && isalpha(d)) {
+214:                           d = toupper(d);
+215:                       }
+216:                       dbuf[n++] = (char)d;
+217:                       --w;
+218:                   }
+219:                   h -= l*u;
+220:                   u = u/16.0;
+221:                   --ne;
+222:                   ++i;
+223:               }
+224:               if (!pp && (flags & POUND_FLAG)) {
+225:                   dbuf[n++] = '.';
+226:               }
+227:               dbuf[n] = '\0';
+228:           
+229:               /* Convert exponent */
+230:               i = sizeof(dbuf) - 1;
+231:               dbuf[i] = '\0';
+232:               sign = 0;
+233:               if (e < 0) {
+234:                   sign = 1;
+235:                   e = -e;
+236:               }
+237:               p = 1;
+238:               while (e || (0 < p)) {
+239:                   --i;
+240:                   dbuf[i] = '0' + (e % 10);
+241:                   e = e / 10;
+242:                   --p;
+243:                   --w;
+244:               }
+245:               --i;
+246:               dbuf[i] = sign ? '-' : '+';
+247:               --w;
+248:               --i;
+249:               dbuf[i] = isupper((int)c) ? 'P' : 'p';
+250:               --w;
+251:               strcpy(&dbuf[n], &dbuf[i]);
+252:           
+253:               /* Put out padded string */
+254:               return pad(fp, &dbuf[0], w);
+255:           }
+256:           #endif
+257:           
+258:           #ifdef _VFPF_C
+259:           static _INLINE int ctoa(FILE *fp, char c)
+260:           {
+261:               int l, w;
+262:           
+263:               /* Get width */
+264:               w = width ? width - 1 : width;
+265:           
+266:               /* Left justify ? Put out character */
+267:               if (flags & MINUS_FLAG) {
+268:                   fputc(c, fp);
+269:               }
+270:               /* Put out padding */
+271:               w = (w < 0) ? 0 : w;
+272:               l = 0;
+273:               while (l < w) {
+274:                   fputc(' ', fp);
+275:                   ++l;
+276:               }
+277:               /* Right justify ? Put out string */
+278:               if (!(flags & MINUS_FLAG)) {
+279:                   fputc(c, fp);
+280:               }
+281:           
+282:               return l+1;
+283:           }
+284:           #endif
+285:           
+286:           #ifdef _VFPF_D
+287:           static _INLINE int dtoa(FILE *fp, long long d)
+288:           {
+289:               int i, p, s, w;
+290:               long long n;
+291:           
+292:               /* Record sign, get absolute value */
+293:               n = d;
+294:               s = n < 0 ? 1 : 0;
+295:               if (s) {
+296:                   n = -n;
+297:               }
+298:           
+299:               /* Adjust flags, precision, width */
+300:               if (!(prec < 0)) {
+301:                   flags &= ~ZERO_FLAG;
+302:               }
+303:               p = (0 < prec) ? prec : 1;
+304:               w = width;
+305:               if (s || (flags & PLUS_FLAG)) {
+306:                   --w;
+307:               }
+308:           
+309:               /* Convert to decimal, possibly filling on the left with zeroes */
+310:               i = sizeof(dbuf) - 1;
+311:               dbuf[i] = '\0';
+312:               while (!(i < 1) && (n || (0 < p) || ((0 < w) && (flags & ZERO_FLAG)))) {
+313:                   --i;
+314:                   dbuf[i] = (char)((int)'0' + abs(n % 10));
+315:                   --p;
+316:                   --w;
+317:                   n = n / 10;
+318:               }
+319:           
+320:               /* Display sign if required */
+321:               if (s || (flags & PLUS_FLAG)) {
+322:                   --i;
+323:                   dbuf[i] = s ? '-' : '+';
+324:               }
+325:           
+326:               /* Put out padded string */
+327:               return pad(fp, &dbuf[i], w);
+328:           }
+329:           #endif
+330:           
+331:           #if defined(_VFPF_E) || defined(_VFPF_F) || defined(_VFPF_G)
+332:           static _INLINE int efgtoa(FILE *fp, long double f, char c)
+333:           {
+334:               char mode, nmode;
+335:               int d, e, i, m, n, ne, p, pp, sign, t, w;
+336:               long double g, h, l, ou, u;
+337:           
+338:               /* Record sign, get absolute value */
+339:               sign = 0;
+340:               g = f;
+341:               if (g < 0.0) {
+342:                   sign = 1;
+343:                   g = -g;
+344:               }
+345:           
+346:               /* Print sign */
+347:               n = 0;
+348:               w = width;
+349:               if (sign || (flags & PLUS_FLAG)) {
+350:                   dbuf[n] = sign ? '-' : '+';
+351:                   ++n;
+352:                   --w;
+353:               }
+354:           
+355:               /* Catch infinities, NaNs here */
+356:               if (isinf(g)) {
+357:                   if (isupper((int)c)) {
+358:                       strcpy(&dbuf[n], "INF");
+359:                   } else {
+360:                       strcpy(&dbuf[n], "inf");
+361:                   }
+362:                   w -= CSTRLEN("inf");
+363:                   return pad(fp, &dbuf[0], w);
+364:               }
+365:               if (isnan(g)) {
+366:                   if (isupper((int)c)) {
+367:                       strcpy(&dbuf[n], "NAN");
+368:                   } else {
+369:                       strcpy(&dbuf[n], "nan");
+370:                   }
+371:                   w -= CSTRLEN("inf");
+372:                   return pad(fp, &dbuf[0], w);
+373:               }
+374:           
+375:               /* First find the largest power of 10 not larger than number to print */
+376:               u = 1.0;
+377:               e = 0;
+378:               if (!(g == 0.0)) {
+379:                   while (!(g < (u*10.0))) {
+380:                       u = u*10.0;
+381:                       ++e;
+382:                   }
+383:                   while (g < u) {
+384:                       u = u/10.0;
+385:                       --e;
+386:                   }
+387:               }
+388:           
+389:               /* Get mode, precision */
+390:               mode = (char)tolower((int)c);
+391:               nmode = mode;
+392:               if (mode == 'g') {
+393:           		if (prec == 0) {
+394:           			prec = 1;
+395:           		}
+396:                   p = (0 < prec) ? prec : 6;
+397:               } else {
+398:                   p = (prec < 0) ? 6 : prec;
+399:               }
+400:           
+401:               /* Choose e or f mode from g mode */
+402:               if (mode == 'g') {
+403:                   if (!(e < -4) && !((p - 1) < e)) {
+404:                       nmode = 'f';
+405:                   } else {
+406:                       nmode = 'e';
+407:                   }
+408:               }
+409:           
+410:               /* Decimal places or significant digits */
+411:               m = p;
+412:               if (!(mode == 'g') || ((nmode == 'f') && (e < 0))) {
+413:                   ++m;
+414:               }
+415:           
+416:               /* Adjust starting exponent, string length for 'f' conversions */
+417:               if (nmode == 'f') {
+418:                   if (e < 0) {
+419:                       u = 1.0;
+420:                       e = 0;
+421:                   }
+422:                   if (!(mode == 'g')) {
+423:                       m += e;
+424:                   }
+425:               }
+426:           
+427:               /* Go through the conversion once to get to the rounding step */
+428:               i = 0;
+429:               h = g;
+430:               ou = u;
+431:               while (i < m) {
+432:                   l = floor(h/u);
+433:                   d = (int)l;
+434:                   h -= l*u;
+435:                   u = u/10.0;
+436:                   ++i;
+437:               }
+438:               
+439:               /* Remainder >= halfway ? */
+440:               l = u*5.0;
+441:               if (h < l) {
+442:                   l = 0.0;
+443:               } else {
+444:                   /* On tie choose even number */
+445:                   if ((h == l) && !(d % 2)) {
+446:                       l = 0.0;
+447:                   }
+448:               }
+449:           
+450:               /* Round */
+451:               h = g + l;
+452:               /* Has rounding increased the power above 10^0? */
+453:           	if (h >= (ou*10.0)) {
+454:           		e++;
+455:           		ou *= 10.0;
+456:           		if (nmode == 'f') {
+457:           			// the increase in power will only affect the number of digits in 'f' mode
+458:           			m++;
+459:           		}
+460:           	}
+461:               
+462:               /* Convert again, after rounding */
+463:               u = ou;
+464:               ne = (nmode == 'e') ? 0 : e;
+465:               pp = 0;
+466:               t = 0;
+467:               i = 0;
+468:               while ((i < m) && (n < (DBLEN - EXPLEN))) {
+469:                   l = floor(h/u);
+470:                   d = (int)l;
+471:                   if (!(flags & POUND_FLAG) && !d && (mode == 'g') && (ne < 0)) {
+472:                       ++t;
+473:                   } else {
+474:                       if (!pp && (ne < 0)) {
+475:                           dbuf[n++] = '.';
+476:                           --w;
+477:                           pp = 1;
+478:                       }
+479:                       while (t) {
+480:                           dbuf[n++] = '0';
+481:                           --w;
+482:                           --t;
+483:                       }
+484:                       dbuf[n++] = (char)((int)'0' + d);
+485:                       --w;
+486:                   }
+487:                   h -= l*u;
+488:                   u = u/10.0;
+489:                   --ne;
+490:                   ++i;
+491:               }
+492:               if (!pp && (flags & POUND_FLAG)) {
+493:                   dbuf[n++] = '.';
+494:               }
+495:               dbuf[n] = '\0';
+496:           
+497:               /* Convert exponent */
+498:               if (nmode == 'e') {
+499:                   i = sizeof(dbuf) - 1;
+500:                   dbuf[i] = '\0';
+501:                   sign = 0;
+502:                   if (e < 0) {
+503:                       sign = 1;
+504:                       e = -e;
+505:                   }
+506:                   p = 2;
+507:                   while (e || (0 < p)) {
+508:                       --i;
+509:                       dbuf[i] = '0' + (e % 10);
+510:                       e = e / 10;
+511:                       --p;
+512:                       --w;
+513:                   }
+514:                   --i;
+515:                   dbuf[i] = sign ? '-' : '+';
+516:                   --w;
+517:                   --i;
+518:                   dbuf[i] = isupper((int)c) ? 'E' : 'e';
+519:                   --w;
+520:                   strcpy(&dbuf[n], &dbuf[i]);
+521:               }
+522:           
+523:               /* Put out padded string */
+524:               return pad(fp, &dbuf[0], w);
+525:           }
+526:           #endif
+527:           
+528:           #ifdef _VFPF_O
+529:           static _INLINE int otoa(FILE *fp, unsigned long long d)
+530:           {
+531:               int i, p, t, w;
+532:               unsigned long long n;
+533:           
+534:               /* Adjust flags, precision, width */
+535:               if (!(prec < 0)) {
+536:                   flags &= ~ZERO_FLAG;
+537:               }
+538:               p = (0 < prec) ? prec : 1;
+539:               w = width;
+540:           
+541:               /* Convert to octal, possibly filling on the left with zeroes */
+542:               n = d;
+543:               i = sizeof(dbuf) - 1;
+544:               dbuf[i] = '\0';
+545:               t = 0;
+546:               while (!(i < 1) && (n || (0 < p) || ((0 < w) && (flags & ZERO_FLAG)))) {
+547:                   --i;
+548:                   t = n & 07;
+549:                   dbuf[i] = (char)((int)'0' + t);
+550:                   --p;
+551:                   --w;
+552:                   n = n >> 3;
+553:               }
+554:           
+555:               /* Display prefix if required */
+556:               if ((flags & POUND_FLAG) && t) {
+557:                   --i;
+558:                   dbuf[i] = '0';
+559:                   --w;
+560:               }
+561:           
+562:               /* Put out padded string */
+563:               return pad(fp, &dbuf[i], w);
+564:           }
+565:           #endif
+566:           
+567:           #ifdef _VFPF_S
+568:           static _INLINE int stoa(FILE *fp, char *s)
+569:           {
+570:               char *cp, nuls[] = "(null)";
+571:               int i, l, p, w;
+572:           
+573:               /* Check for null string */
+574:               cp = s;
+575:               if (!cp) {
+576:                   cp = nuls;
+577:               }
+578:           
+579:               /* Get length, precision, width */
+580:               l = (int)strlen(cp);
+581:               p = prec;
+582:               l = (!(p < 0) && (p < l)) ? p : l;
+583:               p = l;
+584:               w = width;
+585:           
+586:               /* Right justify, pad on left ? */
+587:               if (!(flags & MINUS_FLAG)) {
+588:                   while (l < w) {
+589:                       fputc(' ', fp);
+590:                       ++l;
+591:                   }
+592:               }
+593:           
+594:               /* Put out string */
+595:               i = 0;
+596:               while (i < p) {
+597:                   fputc(*cp, fp);
+598:                   ++cp;
+599:                   ++i;
+600:               }
+601:           
+602:               /* Left justify, pad on right ? */
+603:               if (flags & MINUS_FLAG) {
+604:                   while (l < w) {
+605:                       fputc(' ', fp);
+606:                       ++l;
+607:                   }
+608:               }
+609:           
+610:               return l;
+611:           }
+612:           #endif
+613:           
+614:           #ifdef _VFPF_U
+615:           static _INLINE int utoa(FILE *fp, unsigned long long d)
+616:           {
+617:               int i, p, w;
+618:               unsigned long long n;
+619:           
+620:               /* Adjust flags, precision, width */
+621:               if (!(prec < 0)) {
+622:                   flags &= ~ZERO_FLAG;
+623:               }
+624:               p = (0 < prec) ? prec : 1;
+625:               w = width;
+626:           
+627:               /* Convert to decimal, possibly filling on the left with zeroes */
+628:               n = d;
+629:               i = sizeof(dbuf) - 1;
+630:               dbuf[i] = '\0';
+631:               while (i && (n || (0 < p) || ((0 < w) && (flags & ZERO_FLAG)))) {
+632:                   --i;
+633:                   dbuf[i] = '0' + (n % 10);
+634:                   --p;
+635:                   --w;
+636:                   n = n / 10;
+637:               }
+638:           
+639:               /* Put out padded string */
+640:               return pad(fp, &dbuf[i], w);
+641:           }
+642:           #endif
+643:           
+644:           #if defined(_VFPF_X) || defined(_VFPF_P)
+645:           static _INLINE int xtoa(FILE *fp, unsigned long long d, char x)
+646:           {
+647:               int c, i, p, w;
+648:               unsigned long long n;
+649:           
+650:               /* Adjust, flags, precision, width */
+651:               if (!(prec < 0)) {
+652:                   flags &= ~ZERO_FLAG;
+653:               }
+654:               p = (0 < prec) ? prec : 1;
+655:               w = width;
+656:               if (flags & POUND_FLAG) {
+657:                   w -= 2;
+658:               }
+659:           
+660:               /* Convert to hexadecimal, possibly filling on the left with zeroes */
+661:               n = d;
+662:               i = sizeof(dbuf) - 1;
+663:               dbuf[i] = '\0';
+664:               while (!(i < 2) && (n || (0 < p) || ((0 < w) && (flags & ZERO_FLAG)))) {
+665:                   --i;
+666:                   c = n & 0x0f;
+667:                   c = (c < 10) ? (int)'0' + c : (int)'a' + (c - 10);
+668:                   if (isupper((int)x) && isalpha(c)) {
+669:                       c = toupper(c);
+670:                   }
+671:                   dbuf[i] = (char)c;
+672:                   --p;
+673:                   --w;
+674:                   n = n >> 4;
+675:               }
+676:           
+677:               /* Display prefix if required */
+678:               if (flags & POUND_FLAG) {
+679:                   --i;
+680:                   dbuf[i] = x;
+681:                   --i;
+682:                   dbuf[i] = '0';
+683:               }
+684:           
+685:               /* Put out padded string */
+686:               return pad(fp, &dbuf[i], w);
+687:           }
+688:           #endif
+689:           
+690:           /* Consume and convert the next part of the format string */
+691:           #ifdef _VFPF_CONVERT
+692:           static _INLINE int vfpfcnvrt(FILE *fp, char *fmt[], va_list ap)
+693:           {
+694:               char c, *cp, ct[3];
+695:               int done, i;
+696:               long long ll;
+697:               unsigned long long llu;
+698:               long double f;
+699:               void *vp;
+700:           
+701:               /* Conversion ? */
+702:               if ((*fmt)[0] == '%') {
+0608  C0AC     MOVFF fmt, FSR2
+060A  FFD9     NOP
+060C  C0AD     MOVFF 0xAD, FSR2H
+060E  FFDA     NOP
+0610  CFDE     MOVFF POSTINC2, TBLPTR
+0612  FFF6     NOP
+0614  CFDE     MOVFF POSTINC2, TBLPTRH
+0616  FFF7     NOP
+0618  0E05     MOVLW 0x5
+061A  64F7     CPFSGT TBLPTRH, ACCESS
+061C  D003     BRA 0x624
+061E  0008     TBLRD*
+0620  50F5     MOVF TABLAT, W, ACCESS
+0622  D005     BRA 0x62E
+0624  CFF6     MOVFF TBLPTR, FSR1
+0626  FFE1     NOP
+0628  CFF7     MOVFF TBLPTRH, FSR1H
+062A  FFE2     NOP
+062C  50E7     MOVF INDF1, W, ACCESS
+062E  0A25     XORLW 0x25
+0630  A4D8     BTFSS STATUS, 2, ACCESS
+0632  EF1D     GOTO 0x63A
+0634  F003     NOP
+0636  EF1F     GOTO 0x63E
+0638  F003     NOP
+063A  EFB2     GOTO 0x764
+063C  F003     NOP
+07B4  C00D     MOVFF fmt, FSR2
+703:                   ++*fmt;
+063E  C0AC     MOVFF fmt, FSR2
+0640  FFD9     NOP
+0642  C0AD     MOVFF 0xAD, FSR2H
+0644  FFDA     NOP
+0646  2ADE     INCF POSTINC2, F, ACCESS
+0648  0E00     MOVLW 0x0
+064A  22DD     ADDWFC POSTDEC2, F, ACCESS
+07EA  C00D     MOVFF fmt, FSR2
+07EC  FFD9     NOP
+07EE  C00E     MOVFF __Hpowerup, FSR2H
+07F0  FFDA     NOP
+07F2  2ADE     INCF POSTINC2, F, ACCESS
+07F4  0E00     MOVLW 0x0
+07F6  22DD     ADDWFC POSTDEC2, F, ACCESS
+704:           
+705:                   flags = width = 0;
+064C  0E00     MOVLW 0x0
+064E  6E3B     MOVWF 0x3B, ACCESS
+0650  0E00     MOVLW 0x0
+0652  6E3A     MOVWF width, ACCESS
+0654  C03A     MOVFF width, flags
+0656  F03E     NOP
+0658  C03B     MOVFF 0x3B, 0x3F
+065A  F03F     NOP
+07F8  0E00     MOVLW 0x0
+07FA  6E3B     MOVWF 0x3B, ACCESS
+07FC  0E00     MOVLW 0x0
+07FE  6E3A     MOVWF width, ACCESS
+0800  C03A     MOVFF width, flags
+0802  F03E     NOP
+0804  C03B     MOVFF 0x3B, 0x3F
+0806  F03F     NOP
+706:                   prec = -1;
+065C  683C     SETF prec, ACCESS
+065E  683D     SETF 0x3D, ACCESS
+0808  683C     SETF prec, ACCESS
+080A  683D     SETF 0x3D, ACCESS
+707:           
+708:           #ifdef _VFPF_FLAGS
+709:                   /* Get flags */
+710:                   done = 0;
+711:                   while (!done) {
+712:                       switch ((*fmt)[0]) {
+713:                           case '-' :
+714:                               flags |= MINUS_FLAG;
+715:                               ++*fmt;
+716:                               break;
+717:                           case '0' :
+718:                               flags |= ZERO_FLAG;
+719:                               ++*fmt;
+720:                               break;
+721:                           case '+' :
+722:                               flags |= PLUS_FLAG;
+723:                               ++*fmt;
+724:                               break;
+725:                           case ' ' :
+726:                               flags |= SPACE_FLAG;
+727:                               ++*fmt;
+728:                               break;
+729:                           case '#' :
+730:                               flags |= POUND_FLAG;
+731:                               ++*fmt;
+732:                               break;
+733:                           default:
+734:                               done = 1;
+735:                               break;
+736:                       }
+737:                   }
+738:                   if (flags & MINUS_FLAG) {
+739:                       flags &= ~ZERO_FLAG;
+740:                   }
+741:           #endif
+742:           
+743:           #ifdef _VFPF_WIDTH
+744:                   /* Get field width */
+745:                   if ((*fmt)[0] == '*') {
+746:                       ++*fmt;
+747:                       width = va_arg(ap, int);
+748:                       if (width < 0) {
+749:                           flags |= MINUS_FLAG;
+750:                           width = -width;
+751:                       }
+752:                   } else {
+753:                       width = atoi(*fmt);
+754:                       while (isdigit((*fmt)[0])) {
+755:                           ++*fmt;
+756:                       }
+757:                   }
+758:           #endif
+759:           
+760:           #ifdef _VFPF_PRECISION
+761:                   /* Get precision */
+762:                   if ((*fmt)[0] == '.') {
+763:                       prec = 0;
+764:                       ++*fmt;
+765:                       if ((*fmt)[0] == '*') {
+766:                           ++*fmt;
+767:                           prec = va_arg(ap, int);
+768:                       } else {
+769:                           prec = atoi(*fmt);
+770:                           while (isdigit((*fmt)[0])) {
+771:                               ++*fmt;
+772:                           }
+773:                       }
+774:                   }
+775:           #endif
+776:           
+777:           #if defined(_VFPF_A) || defined(_VFPF_E) || defined(_VFPF_F) || defined(_VFPF_G)
+778:                   /* Case-folded conversion types */
+779:                   ct[0] = (char)tolower((int)(*fmt)[0]);
+780:                   if (ct[0]) {
+781:                       ct[1] = (char)tolower((int)(*fmt)[1]);
+782:                       if (ct[1]) {
+783:                           ct[2] = (char)tolower((int)(*fmt)[2]);
+784:                       }
+785:                   }
+786:           #endif
+787:           
+788:           #ifdef _VFPF_A
+789:                   /* 'a' style (hex) floating point */
+790:                   if (ct[0] == 'a') {
+791:           
+792:                       c = (*fmt)[0];
+793:                       ++*fmt;
+794:                       f = (long double)va_arg(ap, double);
+795:                                   
+796:                       return atoa(fp, f, c);
+797:                   }
+798:                   if (!strncmp(ct, "la", CSTRLEN("la"))) {
+799:           
+800:                       c = (*fmt)[1];
+801:                       if (isupper((int)(*fmt)[0])) {
+802:                           f = va_arg(ap, long double);
+803:                       } else {
+804:                           f = (long double)va_arg(ap, double);
+805:                       }
+806:                       *fmt += CSTRLEN("la");
+807:                                   
+808:                       return atoa(fp, f, c);
+809:                   }
+810:           #endif
+811:           
+812:           #ifdef _VFPF_C
+813:                   /* Character */
+814:                   if (*fmt[0] == 'c') {
+815:                       ++*fmt;
+816:                       c = (unsigned char)va_arg(ap, int);
+817:                       return ctoa(fp, c);
+818:                   }
+819:           #endif
+820:           
+821:           #ifdef _VFPF_D
+822:           #ifdef _VFPF_HH
+823:                   /* Character decimal integer */
+824:                   if (!strncmp(*fmt, "hhd", CSTRLEN("hhd")) || \
+825:                       !strncmp(*fmt, "hhi", CSTRLEN("hhi"))) {
+826:           
+827:                       *fmt += CSTRLEN("hhd");
+828:                       ll = (long long)(signed char)va_arg(ap, int);
+829:                                   
+830:                       return dtoa(fp, ll);
+831:                   }
+832:           #endif
+833:           
+834:           #ifdef _VFPF_H
+835:                   /* Short decimal integer */
+836:                   if (!strncmp(*fmt, "hd", CSTRLEN("hd")) || \
+837:                       !strncmp(*fmt, "hi", CSTRLEN("hi"))) {
+838:           
+839:                       *fmt += CSTRLEN("hd");
+840:                       ll = (long long)(short)va_arg(ap, int);
+841:                                   
+842:                       return dtoa(fp, ll);
+843:                   }
+844:           #endif
+845:           
+846:                   /* Decimal integer */
+847:                   if ((*fmt[0] == 'd') || (*fmt[0] == 'i')) {
+848:           
+849:                       ++*fmt;
+850:                       ll = (long long)va_arg(ap, int);
+851:                                   
+852:                       return dtoa(fp, ll);
+853:                   }
+854:           
+855:           #ifdef _VFPF_L
+856:                   /* Long decimal integer */
+857:                   if (!strncmp(*fmt, "ld", CSTRLEN("ld")) || \
+858:                       !strncmp(*fmt, "li", CSTRLEN("li"))) {
+859:           
+860:                       *fmt += CSTRLEN("ld");
+861:                       ll = (long long)va_arg(ap, long);
+862:                                   
+863:                       return dtoa(fp, ll);
+864:                   }
+865:           #endif
+866:           
+867:           #ifdef _VFPF_LL
+868:                   /* Long long decimal integer */
+869:                   if (!strncmp(*fmt, "lld", CSTRLEN("lld")) || \
+870:                       !strncmp(*fmt, "lli", CSTRLEN("lli"))) {
+871:           
+872:                       *fmt += CSTRLEN("lld");
+873:                       ll = va_arg(ap, long long);
+874:                                   
+875:                       return dtoa(fp, ll);
+876:                   }
+877:           #endif
+878:           
+879:           #ifdef _VFPF_J
+880:                   /* intmax_t decimal integer */
+881:                   if (!strncmp(*fmt, "jd", CSTRLEN("jd")) || \
+882:                       !strncmp(*fmt, "ji", CSTRLEN("ji"))) {
+883:           
+884:                       *fmt += CSTRLEN("jd");
+885:                       ll = (long long)va_arg(ap, intmax_t);
+886:                                   
+887:                       return dtoa(fp, ll);
+888:                   }
+889:           #endif
+890:           
+891:           #ifdef _VFPF_T
+892:                   /* ptrdiff_t decimal integer */
+893:                   if (!strncmp(*fmt, "td", CSTRLEN("td")) || \
+894:                       !strncmp(*fmt, "ti", CSTRLEN("ti"))) {
+895:           
+896:                       *fmt += CSTRLEN("td");
+897:                       ll = (long long)va_arg(ap, ptrdiff_t);
+898:                                   
+899:                       return dtoa(fp, ll);
+900:                   }
+901:           #endif
+902:           
+903:           #ifdef _VFPF_Z
+904:                   /* size_t decimal integer */
+905:                   if (!strncmp(*fmt, "zd", CSTRLEN("zd")) || \
+906:                       !strncmp(*fmt, "zi", CSTRLEN("zi"))) {
+907:           
+908:                       *fmt += CSTRLEN("zd");
+909:                       ll = (long long)va_arg(ap, size_t);
+910:                                   
+911:                       return dtoa(fp, ll);
+912:                   }
+913:           #endif
+914:           #endif
+915:           
+916:           #ifdef _VFPF_E
+917:                   /* 'e' style floating point */
+918:                   if (ct[0] == 'e') {
+919:           
+920:                       c = (*fmt)[0];
+921:                       ++*fmt;
+922:                       f = (long double)va_arg(ap, double);
+923:                                   
+924:                       return efgtoa(fp, f, c);
+925:                   }
+926:                   if (!strncmp(ct, "le", CSTRLEN("le"))) {
+927:           
+928:                       c = (*fmt)[1];
+929:                       if (isupper((int)(*fmt)[0])) {
+930:                           f = va_arg(ap, long double);
+931:                       } else {
+932:                           f = (long double)va_arg(ap, double);
+933:                       }
+934:                       *fmt += CSTRLEN("lf");
+935:                                   
+936:                       return efgtoa(fp, f, c);
+937:                   }
+938:           #endif
+939:           
+940:           #ifdef _VFPF_F
+941:                   /* 'f' style floating point */
+942:                   if (ct[0] == 'f') {
+943:           
+944:                       c = (*fmt)[0];
+945:                       ++*fmt;
+946:                       f = (long double)va_arg(ap, double);
+947:                                   
+948:                       return efgtoa(fp, f, c);
+949:                   }
+950:                   if (!strncmp(ct, "lf", CSTRLEN("lf"))) {
+951:           
+952:                       c = (*fmt)[1];
+953:                       if (isupper((int)(*fmt)[0])) {
+954:                           f = va_arg(ap, long double);
+955:                       } else {
+956:                           f = (long double)va_arg(ap, double);
+957:                       }
+958:                       *fmt += CSTRLEN("lf");
+959:                                   
+960:                       return efgtoa(fp, f, c);
+961:                   }
+962:           #endif
+963:           
+964:           #ifdef _VFPF_G
+965:                   /* 'g' style floating point */
+966:                   if (ct[0] == 'g') {
+967:           
+968:                       c = (*fmt)[0];
+969:                       ++*fmt;
+970:                       f = (long double)va_arg(ap, double);
+971:                                   
+972:                       return efgtoa(fp, f, c);
+973:                   }
+974:                   if (!strncmp(ct, "lg", CSTRLEN("lg"))) {
+975:           
+976:                       c = (*fmt)[1];
+977:                       if (isupper((int)(*fmt)[0])) {
+978:                           f = va_arg(ap, long double);
+979:                       } else {
+980:                           f = (long double)va_arg(ap, double);
+981:                       }
+982:                       *fmt += CSTRLEN("lg");
+983:                                   
+984:                       return efgtoa(fp, f, c);
+985:                   }
+986:           #endif
+987:           
+988:           #ifdef _VFPF_O
+989:           #ifdef _VFPF_HH
+990:                   /* Character octal integer */
+991:                   if (!strncmp(*fmt, "hho", CSTRLEN("hho"))) {
+992:           
+993:                       *fmt += CSTRLEN("hho");
+994:                       llu = (unsigned long long)(unsigned char)va_arg(ap, int);
+995:                                   
+996:                       return otoa(fp, llu);
+997:                   }
+998:           #endif
+999:           
+1000:          #ifdef _VFPF_H
+1001:                  /* Short octal integer */
+1002:                  if (!strncmp(*fmt, "ho", CSTRLEN("ho"))) {
+1003:          
+1004:                      *fmt += CSTRLEN("ho");
+1005:                      llu = (unsigned long long)(unsigned short)va_arg(ap, int);
+1006:                                  
+1007:                      return otoa(fp, llu);
+1008:                  }
+1009:          #endif
+1010:          
+1011:                  /* Octal integer */
+1012:                  if (*fmt[0] == 'o') {
+1013:          
+1014:                      ++*fmt;
+1015:                      llu = (unsigned long long)va_arg(ap, unsigned int);
+1016:                                  
+1017:                      return otoa(fp, llu);
+1018:                  }
+1019:          
+1020:          #ifdef _VFPF_L
+1021:                  /* Long octal integer */
+1022:                  if (!strncmp(*fmt, "lo", CSTRLEN("lo"))) {
+1023:          
+1024:                      *fmt += CSTRLEN("lo");
+1025:                      llu = (unsigned long long)va_arg(ap, unsigned long);
+1026:                                  
+1027:                      return otoa(fp, llu);
+1028:                  }
+1029:          #endif
+1030:          
+1031:          #ifdef _VFPF_LL
+1032:                  /* Long long octal integer */
+1033:                  if (!strncmp(*fmt, "llo", CSTRLEN("llo"))) {
+1034:          
+1035:                      *fmt += CSTRLEN("llo");
+1036:                      llu = va_arg(ap, unsigned long long);
+1037:                                  
+1038:                      return otoa(fp, llu);
+1039:                  }
+1040:          #endif
+1041:          
+1042:          #ifdef _VFPF_J
+1043:                  /* uintmax_t octal integer */
+1044:                  if (!strncmp(*fmt, "jo", CSTRLEN("jo"))) {
+1045:          
+1046:                      *fmt += CSTRLEN("jo");
+1047:                      llu = (unsigned long long)va_arg(ap, uintmax_t);
+1048:                                  
+1049:                      return otoa(fp, llu);
+1050:                  }
+1051:          #endif
+1052:          
+1053:          #ifdef _VFPF_T
+1054:                  /* ptrdiff_t octal integer */
+1055:                  if (!strncmp(*fmt, "to", CSTRLEN("to"))) {
+1056:          
+1057:                      *fmt += CSTRLEN("to");
+1058:                      llu = (unsigned long long)va_arg(ap, ptrdiff_t);
+1059:                                  
+1060:                      return otoa(fp, llu);
+1061:                  }
+1062:          #endif
+1063:          
+1064:          #ifdef _VFPF_Z
+1065:                  /* size_t octal integer */
+1066:                  if (!strncmp(*fmt, "zo", CSTRLEN("zo"))) {
+1067:          
+1068:                      *fmt += CSTRLEN("zo");
+1069:                      llu = (unsigned long long)va_arg(ap, size_t);
+1070:                                  
+1071:                      return otoa(fp, llu);
+1072:                  }
+1073:          #endif
+1074:          #endif
+1075:          
+1076:                  /* Character count */
+1077:          #ifdef _VFPF_N
+1078:          
+1079:          #ifdef _VFPF_HH
+1080:                  if (!strncmp(*fmt, "hhn", CSTRLEN("hhn"))) {
+1081:          
+1082:                      *fmt += CSTRLEN("hhn");
+1083:                      vp = (void *)va_arg(ap, char *);
+1084:                      *(char *)vp = (char)nout;
+1085:                      return 0;
+1086:                  }
+1087:          #endif
+1088:          
+1089:          #ifdef _VFPF_H
+1090:                  if (!strncmp(*fmt, "hn", CSTRLEN("hn"))) {
+1091:          
+1092:                      *fmt += CSTRLEN("hn");
+1093:                      vp = (void *)va_arg(ap, short *);
+1094:                      *(short *)vp = (short)nout;
+1095:                      return 0;
+1096:                  }
+1097:          #endif
+1098:          
+1099:                  if (*fmt[0] == 'n') {
+0660  C0AC     MOVFF fmt, FSR2
+0662  FFD9     NOP
+0664  C0AD     MOVFF 0xAD, FSR2H
+0666  FFDA     NOP
+0668  CFDE     MOVFF POSTINC2, TBLPTR
+066A  FFF6     NOP
+066C  CFDE     MOVFF POSTINC2, TBLPTRH
+066E  FFF7     NOP
+0670  0E05     MOVLW 0x5
+0672  64F7     CPFSGT TBLPTRH, ACCESS
+0674  D003     BRA 0x67C
+0676  0008     TBLRD*
+0678  50F5     MOVF TABLAT, W, ACCESS
+067A  D005     BRA 0x686
+067C  CFF6     MOVFF TBLPTR, FSR1
+067E  FFE1     NOP
+0680  CFF7     MOVFF TBLPTRH, FSR1H
+0682  FFE2     NOP
+0684  50E7     MOVF INDF1, W, ACCESS
+0686  0A6E     XORLW 0x6E
+0688  A4D8     BTFSS STATUS, 2, ACCESS
+068A  EF49     GOTO 0x692
+068C  F003     NOP
+068E  EF4B     GOTO 0x696
+0690  F003     NOP
+0692  EF75     GOTO 0x6EA
+0694  F003     NOP
+080C  C00D     MOVFF fmt, FSR2
+080E  FFD9     NOP
+0810  C00E     MOVFF __Hpowerup, FSR2H
+0812  FFDA     NOP
+0814  CFDE     MOVFF POSTINC2, TBLPTR
+0816  FFF6     NOP
+0818  CFDE     MOVFF POSTINC2, TBLPTRH
+081A  FFF7     NOP
+081C  0E05     MOVLW 0x5
+081E  64F7     CPFSGT TBLPTRH, ACCESS
+0820  D003     BRA 0x828
+0822  0008     TBLRD*
+0824  50F5     MOVF TABLAT, W, ACCESS
+0826  D005     BRA 0x832
+0828  CFF6     MOVFF TBLPTR, FSR1
+082A  FFE1     NOP
+082C  CFF7     MOVFF TBLPTRH, FSR1H
+082E  FFE2     NOP
+0830  50E7     MOVF INDF1, W, ACCESS
+0832  0A6E     XORLW 0x6E
+0834  A4D8     BTFSS STATUS, 2, ACCESS
+0836  EF1F     GOTO 0x83E
+0838  F004     NOP
+083A  EF21     GOTO 0x842
+083C  F004     NOP
+083E  EF4A     GOTO 0x894
+0840  F004     NOP
+1100:                      ++*fmt;
+0696  C0AC     MOVFF fmt, FSR2
+0698  FFD9     NOP
+069A  C0AD     MOVFF 0xAD, FSR2H
+069C  FFDA     NOP
+069E  2ADE     INCF POSTINC2, F, ACCESS
+06A0  0E00     MOVLW 0x0
+06A2  22DD     ADDWFC POSTDEC2, F, ACCESS
+0842  C00D     MOVFF fmt, FSR2
+0844  FFD9     NOP
+0846  C00E     MOVFF __Hpowerup, FSR2H
+0848  FFDA     NOP
+084A  2ADE     INCF POSTINC2, F, ACCESS
+084C  0E00     MOVLW 0x0
+084E  22DD     ADDWFC POSTDEC2, F, ACCESS
+1101:                      vp = (void *)va_arg(ap, int *);
+06A4  C0AE     MOVFF ap, FSR2
+06A6  FFD9     NOP
+06A8  C0AF     MOVFF 0xAF, FSR2H
+06AA  FFDA     NOP
+06AC  CFDF     MOVFF INDF2, 0xB0
+06AE  F0B0     NOP
+06B0  0E02     MOVLW 0x2
+06B2  26DE     ADDWF POSTINC2, F, ACCESS
+06B4  CFDF     MOVFF INDF2, 0xB1
+06B6  F0B1     NOP
+06B8  0E00     MOVLW 0x0
+06BA  22DD     ADDWFC POSTDEC2, F, ACCESS
+06BC  C0B0     MOVFF 0xB0, FSR2
+06BE  FFD9     NOP
+06C0  C0B1     MOVFF 0xB1, FSR2H
+06C2  FFDA     NOP
+06C4  CFDE     MOVFF POSTINC2, vp
+06C6  F0B2     NOP
+06C8  CFDD     MOVFF POSTDEC2, 0xB3
+06CA  F0B3     NOP
+0850  C00F     MOVFF __Hpowerup, FSR2
+0852  FFD9     NOP
+0854  C010     MOVFF 0x10, FSR2H
+0856  FFDA     NOP
+0858  CFDF     MOVFF INDF2, 0x11
+085A  F011     NOP
+085C  0E02     MOVLW 0x2
+085E  26DE     ADDWF POSTINC2, F, ACCESS
+0860  CFDF     MOVFF INDF2, 0x12
+0862  F012     NOP
+0864  0E00     MOVLW 0x0
+0866  22DD     ADDWFC POSTDEC2, F, ACCESS
+0868  C011     MOVFF 0x11, FSR2
+086A  FFD9     NOP
+086C  C012     MOVFF 0x12, FSR2H
+086E  FFDA     NOP
+0870  CFDE     MOVFF POSTINC2, vp
+0872  F013     NOP
+0874  CFDD     MOVFF POSTDEC2, 0x14
+0876  F014     NOP
+1102:                      *(int *)vp = nout;
+06CC  C0B2     MOVFF vp, FSR2
+06CE  FFD9     NOP
+06D0  C0B3     MOVFF 0xB3, FSR2H
+06D2  FFDA     NOP
+06D4  C038     MOVFF nout, POSTINC2
+06D6  FFDE     NOP
+06D8  C039     MOVFF 0x39, POSTDEC2
+06DA  FFDD     NOP
+0878  C013     MOVFF vp, FSR2
+087A  FFD9     NOP
+087C  C014     MOVFF 0x14, FSR2H
+087E  FFDA     NOP
+0880  C038     MOVFF nout, POSTINC2
+0882  FFDE     NOP
+0884  C039     MOVFF 0x39, POSTDEC2
+0886  FFDD     NOP
+1103:                      return 0;
+06DC  0E00     MOVLW 0x0
+06DE  0100     MOVLB 0x0
+06E0  6FAB     MOVWF 0xAB, BANKED
+06E2  0E00     MOVLW 0x0
+06E4  6FAA     MOVWF fp, BANKED
+06E6  EFD9     GOTO 0x7B2
+06E8  F003     NOP
+0888  0E00     MOVLW 0x0
+088A  6E0C     MOVWF 0xC, ACCESS
+088C  0E00     MOVLW 0x0
+088E  6E0B     MOVWF fp, ACCESS
+0890  EFAB     GOTO 0x956
+0892  F004     NOP
+1104:                  }
+1105:          
+1106:          #ifdef _VFPF_L
+1107:                  if (!strncmp(*fmt, "ln", CSTRLEN("ln"))) {
+1108:          
+1109:                      *fmt += CSTRLEN("ln");
+1110:                      vp = (void *)va_arg(ap, long *);
+1111:                      *(long *)vp = (long)nout;
+1112:                      return 0;
+1113:                  }
+1114:          #endif
+1115:          
+1116:          #ifdef _VFPF_LL
+1117:                  if (!strncmp(*fmt, "lln", CSTRLEN("lln"))) {
+1118:          
+1119:                      *fmt += CSTRLEN("lln");
+1120:                      vp = (void *)va_arg(ap, long long *);
+1121:                      *(long long *)vp = (long long)nout;
+1122:                      return 0;
+1123:                  }
+1124:          #endif
+1125:          
+1126:          #ifdef _VFPF_J
+1127:                  if (!strncmp(*fmt, "jn", CSTRLEN("jn"))) {
+1128:          
+1129:                      *fmt += CSTRLEN("jn");
+1130:                      vp = (void *)va_arg(ap, uintmax_t *);
+1131:                      *(uintmax_t *)vp = (uintmax_t)nout;
+1132:                      return 0;
+1133:                  }
+1134:          #endif
+1135:          
+1136:          #ifdef _VFPF_T
+1137:                  if (!strncmp(*fmt, "tn", CSTRLEN("tn"))) {
+1138:          
+1139:                      *fmt += CSTRLEN("tn");
+1140:                      vp = (void *)va_arg(ap, ptrdiff_t *);
+1141:                      *(ptrdiff_t *)vp = (ptrdiff_t)nout;
+1142:                      return 0;
+1143:                  }
+1144:          #endif
+1145:          
+1146:          #ifdef _VFPF_Z
+1147:                  if (!strncmp(*fmt, "zn", CSTRLEN("zn"))) {
+1148:          
+1149:                      *fmt += CSTRLEN("zn");
+1150:                      vp = (void *)va_arg(ap, size_t *);
+1151:                      *(size_t *)vp = (size_t)nout;
+1152:                      return 0;
+1153:                  }
+1154:          #endif
+1155:          
+1156:          #endif
+1157:          
+1158:          #ifdef _VFPF_P
+1159:                  /* Pointer */
+1160:                  if (*fmt[0] == 'p') {
+1161:          
+1162:                      ++*fmt;
+1163:                      llu = (unsigned long long)(uintptr_t)va_arg(ap, void *);
+1164:                                  
+1165:                      return xtoa(fp, llu, 'x');
+1166:                  }
+1167:          #endif
+1168:          
+1169:          #ifdef _VFPF_S
+1170:                  /* String */
+1171:                  if (*fmt[0] == 's') {
+1172:          
+1173:                      ++*fmt;
+1174:                      cp = va_arg(ap, char *);
+1175:          
+1176:                      return stoa(fp, cp);
+1177:                  }
+1178:          #endif
+1179:          
+1180:          #ifdef _VFPF_U
+1181:          #ifdef _VFPF_HH
+1182:                  /* Unsigned character decimal integer */
+1183:                  if (!strncmp(*fmt, "hhu", CSTRLEN("hhu"))) {
+1184:          
+1185:                      *fmt += CSTRLEN("hhu");
+1186:                      llu = (unsigned long long)(unsigned char)va_arg(ap, int);
+1187:                                  
+1188:                      return utoa(fp, llu);
+1189:                  }
+1190:          #endif
+1191:          
+1192:          #ifdef _VFPF_H
+1193:                  /* Unsigned short decimal integer */
+1194:                  if (!strncmp(*fmt, "hu", CSTRLEN("hu"))) {
+1195:          
+1196:                      *fmt += CSTRLEN("hu");
+1197:                      llu = (unsigned long long)(unsigned short)va_arg(ap, int);
+1198:                                  
+1199:                      return utoa(fp, llu);
+1200:                  }
+1201:          #endif
+1202:          
+1203:                  /* Unsigned decimal integer */
+1204:                  if (*fmt[0] == 'u') {
+1205:          
+1206:                      ++*fmt;
+1207:                      llu = (unsigned long long)va_arg(ap, unsigned int);
+1208:                                  
+1209:                      return utoa(fp, llu);
+1210:                  }
+1211:          
+1212:          #ifdef _VFPF_L
+1213:                  /* Unsigned long decimal integer */
+1214:                  if (!strncmp(*fmt, "lu", CSTRLEN("lu"))) {
+1215:          
+1216:                      *fmt += CSTRLEN("lu");
+1217:                      llu = (unsigned long long)va_arg(ap, unsigned long);
+1218:                                  
+1219:                      return utoa(fp, llu);
+1220:                  }
+1221:          #endif
+1222:          
+1223:          #ifdef _VFPF_LL
+1224:                  /* Unsigned long long decimal integer */
+1225:                  if (!strncmp(*fmt, "llu", CSTRLEN("llu"))) {
+1226:          
+1227:                      *fmt += CSTRLEN("llu");
+1228:                      llu = va_arg(ap, unsigned long long);
+1229:                                  
+1230:                      return utoa(fp, llu);
+1231:                  }
+1232:          #endif
+1233:          
+1234:          #ifdef _VFPF_J
+1235:                  /* uintmax_t decimal integer */
+1236:                  if (!strncmp(*fmt, "ju", CSTRLEN("ju"))) {
+1237:          
+1238:                      *fmt += CSTRLEN("ju");
+1239:                      llu = (unsigned long long)va_arg(ap, uintmax_t);
+1240:                                  
+1241:                      return utoa(fp, llu);
+1242:                  }
+1243:          #endif
+1244:          
+1245:          #ifdef _VFPF_T
+1246:                  /* ptrdiff_t decimal integer */
+1247:                  if (!strncmp(*fmt, "tu", CSTRLEN("tu"))) {
+1248:          
+1249:                      *fmt += CSTRLEN("tu");
+1250:                      llu = (unsigned long long)va_arg(ap, ptrdiff_t);
+1251:                                  
+1252:                      return utoa(fp, llu);
+1253:                  }
+1254:          #endif
+1255:          
+1256:          #ifdef _VFPF_Z
+1257:                  /* size_t decimal integer */
+1258:                  if (!strncmp(*fmt, "zu", CSTRLEN("zu"))) {
+1259:          
+1260:                      *fmt += CSTRLEN("zu");
+1261:                      llu = (unsigned long long)va_arg(ap, size_t);
+1262:                                  
+1263:                      return utoa(fp, llu);
+1264:                  }
+1265:          #endif
+1266:          #endif
+1267:          
+1268:          #ifdef _VFPF_X
+1269:          #ifdef _VFPF_HH
+1270:                  /* Character hexadecimal integer */
+1271:                  if (!strncmp(*fmt, "hhx", CSTRLEN("hhx")) || \
+1272:                      !strncmp(*fmt, "hhX", CSTRLEN("hhX"))) {
+1273:          
+1274:                      c = (*fmt)[2];
+1275:                      *fmt += CSTRLEN("hhx");
+1276:                      llu = (unsigned long long)(unsigned char)va_arg(ap, int);
+1277:                                  
+1278:                      return xtoa(fp, llu, c);
+1279:                  }
+1280:          #endif
+1281:          
+1282:          #ifdef _VFPF_H
+1283:                  /* Short hexadecimal integer */
+1284:                  if (!strncmp(*fmt, "hx", CSTRLEN("hx")) || \
+1285:                      !strncmp(*fmt, "hX", CSTRLEN("hX"))) {
+1286:          
+1287:                      c = (*fmt)[1];
+1288:                      *fmt += CSTRLEN("hx");
+1289:                      llu = (unsigned long long)(unsigned short)va_arg(ap, int);
+1290:                                  
+1291:                      return xtoa(fp, llu, c);
+1292:                  }
+1293:          #endif
+1294:          
+1295:                  /* Hexadecimal integer */
+1296:                  if ((*fmt[0] == 'x') || (*fmt[0] == 'X')) {
+1297:          
+1298:                      c = (*fmt)[0];
+1299:                      ++*fmt;
+1300:                      llu = (unsigned long long)va_arg(ap, unsigned int);
+1301:                                  
+1302:                      return xtoa(fp, llu, c);
+1303:                  }
+1304:          
+1305:          #ifdef _VFPF_L
+1306:                  /* Long hexadecimal integer */
+1307:                  if (!strncmp(*fmt, "lx", CSTRLEN("lx")) || \
+1308:                      !strncmp(*fmt, "lX", CSTRLEN("lX"))) {
+1309:          
+1310:                      c = (*fmt)[1];
+1311:                      *fmt += CSTRLEN("lx");
+1312:                      llu = (unsigned long long)va_arg(ap, unsigned long);
+1313:                                  
+1314:                      return xtoa(fp, llu, c);
+1315:                  }
+1316:          #endif
+1317:          
+1318:          #ifdef _VFPF_LL
+1319:                  /* Long long hexadecimal integer */
+1320:                  if (!strncmp(*fmt, "llx", CSTRLEN("llx")) || \
+1321:                      !strncmp(*fmt, "llX", CSTRLEN("llX"))) {
+1322:          
+1323:                      c = (*fmt)[2];
+1324:                      *fmt += CSTRLEN("llx");
+1325:                      llu = va_arg(ap, unsigned long long);
+1326:                                  
+1327:                      return xtoa(fp, llu, c);
+1328:                  }
+1329:          #endif
+1330:          
+1331:          #ifdef _VFPF_J
+1332:                  /* uintmax_t hexadecimal integer */
+1333:                  if (!strncmp(*fmt, "jx", CSTRLEN("jx")) || \
+1334:                      !strncmp(*fmt, "jX", CSTRLEN("jX"))) {
+1335:          
+1336:                      c = (*fmt)[1];
+1337:                      *fmt += CSTRLEN("jx");
+1338:                      llu = (unsigned long long)va_arg(ap, uintmax_t);
+1339:                                  
+1340:                      return xtoa(fp, llu, c);
+1341:                  }
+1342:          #endif
+1343:          
+1344:          #ifdef _VFPF_T
+1345:                  /* ptrdiff_t hexadecimal integer */
+1346:                  if (!strncmp(*fmt, "tx", CSTRLEN("tx")) || \
+1347:                      !strncmp(*fmt, "tX", CSTRLEN("tX"))) {
+1348:          
+1349:                      c = (*fmt)[1];
+1350:                      *fmt += CSTRLEN("tx");
+1351:                      llu = (unsigned long long)va_arg(ap, ptrdiff_t);
+1352:                                  
+1353:                      return xtoa(fp, llu, c);
+1354:                  }
+1355:          #endif
+1356:          
+1357:          #ifdef _VFPF_Z
+1358:                  /* size_t hexadecimal integer */
+1359:                  if (!strncmp(*fmt, "zx", CSTRLEN("zx")) || \
+1360:                      !strncmp(*fmt, "zX", CSTRLEN("zX"))) {
+1361:          
+1362:                      c = (*fmt)[1];
+1363:                      *fmt += CSTRLEN("zx");
+1364:                      llu = (unsigned long long)va_arg(ap, size_t);
+1365:                                  
+1366:                      return xtoa(fp, llu, c);
+1367:                  }
+1368:          #endif
+1369:          #endif
+1370:          
+1371:                  /* 'Escaped' '%' character */
+1372:                  if ((*fmt)[0] == '%') {
+06EA  C0AC     MOVFF fmt, FSR2
+06EC  FFD9     NOP
+06EE  C0AD     MOVFF 0xAD, FSR2H
+06F0  FFDA     NOP
+06F2  CFDE     MOVFF POSTINC2, TBLPTR
+06F4  FFF6     NOP
+06F6  CFDE     MOVFF POSTINC2, TBLPTRH
+06F8  FFF7     NOP
+06FA  0E05     MOVLW 0x5
+06FC  64F7     CPFSGT TBLPTRH, ACCESS
+06FE  D003     BRA 0x706
+0700  0008     TBLRD*
+0702  50F5     MOVF TABLAT, W, ACCESS
+0704  D005     BRA 0x710
+0706  CFF6     MOVFF TBLPTR, FSR1
+0708  FFE1     NOP
+070A  CFF7     MOVFF TBLPTRH, FSR1H
+070C  FFE2     NOP
+070E  50E7     MOVF INDF1, W, ACCESS
+0710  0A25     XORLW 0x25
+0712  A4D8     BTFSS STATUS, 2, ACCESS
+0714  EF8E     GOTO 0x71C
+0716  F003     NOP
+0718  EF90     GOTO 0x720
+071A  F003     NOP
+071C  EFA9     GOTO 0x752
+071E  F003     NOP
+0894  C00D     MOVFF fmt, FSR2
+0896  FFD9     NOP
+0898  C00E     MOVFF __Hpowerup, FSR2H
+089A  FFDA     NOP
+089C  CFDE     MOVFF POSTINC2, TBLPTR
+089E  FFF6     NOP
+08A0  CFDE     MOVFF POSTINC2, TBLPTRH
+08A2  FFF7     NOP
+08A4  0E05     MOVLW 0x5
+08A6  64F7     CPFSGT TBLPTRH, ACCESS
+08A8  D003     BRA 0x8B0
+08AA  0008     TBLRD*
+08AC  50F5     MOVF TABLAT, W, ACCESS
+08AE  D005     BRA 0x8BA
+08B0  CFF6     MOVFF TBLPTR, FSR1
+08B2  FFE1     NOP
+08B4  CFF7     MOVFF TBLPTRH, FSR1H
+08B6  FFE2     NOP
+08B8  50E7     MOVF INDF1, W, ACCESS
+08BA  0A25     XORLW 0x25
+08BC  A4D8     BTFSS STATUS, 2, ACCESS
+08BE  EF63     GOTO 0x8C6
+08C0  F004     NOP
+08C2  EF65     GOTO 0x8CA
+08C4  F004     NOP
+08C6  EF7C     GOTO 0x8F8
+08C8  F004     NOP
+1373:                      ++*fmt;
+0720  C0AC     MOVFF fmt, FSR2
+0722  FFD9     NOP
+0724  C0AD     MOVFF 0xAD, FSR2H
+0726  FFDA     NOP
+0728  2ADE     INCF POSTINC2, F, ACCESS
+072A  0E00     MOVLW 0x0
+072C  22DD     ADDWFC POSTDEC2, F, ACCESS
+08CA  C00D     MOVFF fmt, FSR2
+08CC  FFD9     NOP
+08CE  C00E     MOVFF __Hpowerup, FSR2H
+08D0  FFDA     NOP
+08D2  2ADE     INCF POSTINC2, F, ACCESS
+08D4  0E00     MOVLW 0x0
+08D6  22DD     ADDWFC POSTDEC2, F, ACCESS
+1374:                      fputc((int)'%', fp);
+072E  0E00     MOVLW 0x0
+0730  0100     MOVLB 0x0
+0732  6FA2     MOVWF 0xA2, BANKED
+0734  0E25     MOVLW 0x25
+0736  6FA1     MOVWF c, BANKED
+0738  C0AA     MOVFF fp, fp
+073A  F0A3     NOP
+073C  C0AB     MOVFF 0xAB, 0xA4
+073E  F0A4     NOP
+0740  EC66     CALL 0xCCC, 0
+0742  F006     NOP
+08D8  0E00     MOVLW 0x0
+08DA  6E03     MOVWF __activetblptr, ACCESS
+08DC  0E25     MOVLW 0x25
+08DE  6E02     MOVWF ___rparam_used, ACCESS
+08E0  C00B     MOVFF fp, fp
+08E2  F004     NOP
+08E4  C00C     MOVFF 0xC, counter
+08E6  F005     NOP
+08E8  ECB2     CALL 0xD64, 0
+08EA  F006     NOP
+1375:                      return 1;
+0744  0E00     MOVLW 0x0
+0746  0100     MOVLB 0x0
+0748  6FAB     MOVWF 0xAB, BANKED
+074A  0E01     MOVLW 0x1
+074C  6FAA     MOVWF fp, BANKED
+074E  EFD9     GOTO 0x7B2
+0750  F003     NOP
+08EC  0E00     MOVLW 0x0
+08EE  6E0C     MOVWF 0xC, ACCESS
+08F0  0E01     MOVLW 0x1
+08F2  6E0B     MOVWF fp, ACCESS
+08F4  EFAB     GOTO 0x956
+08F6  F004     NOP
+1376:                  }
+1377:          
+1378:                  /* Unrecognized conversion */
+1379:                  ++*fmt;
+0752  C0AC     MOVFF fmt, FSR2
+0754  FFD9     NOP
+0756  C0AD     MOVFF 0xAD, FSR2H
+0758  FFDA     NOP
+075A  2ADE     INCF POSTINC2, F, ACCESS
+075C  0E00     MOVLW 0x0
+075E  22DD     ADDWFC POSTDEC2, F, ACCESS
+0760  EF6E     GOTO 0x6DC
+0762  F003     NOP
+08F8  C00D     MOVFF fmt, FSR2
+08FA  FFD9     NOP
+08FC  C00E     MOVFF __Hpowerup, FSR2H
+08FE  FFDA     NOP
+0900  2ADE     INCF POSTINC2, F, ACCESS
+0902  0E00     MOVLW 0x0
+0904  22DD     ADDWFC POSTDEC2, F, ACCESS
+0906  EF44     GOTO 0x888
+0908  F004     NOP
+1380:                  return 0;
+1381:              }
+1382:          
+1383:              /* No conversion, just intervening text */
+1384:              fputc((int)(*fmt)[0], fp);
+0764  C0AC     MOVFF fmt, FSR2
+0766  FFD9     NOP
+0768  C0AD     MOVFF 0xAD, FSR2H
+076A  FFDA     NOP
+076C  CFDE     MOVFF POSTINC2, TBLPTR
+076E  FFF6     NOP
+0770  CFDE     MOVFF POSTINC2, TBLPTRH
+0772  FFF7     NOP
+0774  0E05     MOVLW 0x5
+0776  64F7     CPFSGT TBLPTRH, ACCESS
+0778  D003     BRA 0x780
+077A  0008     TBLRD*
+077C  50F5     MOVF TABLAT, W, ACCESS
+077E  D005     BRA 0x78A
+0780  CFF6     MOVFF TBLPTR, FSR1
+0782  FFE1     NOP
+0784  CFF7     MOVFF TBLPTRH, FSR1H
+0786  FFE2     NOP
+0788  50E7     MOVF INDF1, W, ACCESS
+078A  0100     MOVLB 0x0
+078C  6FB0     MOVWF 0xB0, BANKED
+078E  51B0     MOVF 0xB0, W, BANKED
+0790  6FA1     MOVWF c, BANKED
+0792  6BA2     CLRF 0xA2, BANKED
+0794  C0AA     MOVFF fp, fp
+0796  F0A3     NOP
+0798  C0AB     MOVFF 0xAB, 0xA4
+079A  F0A4     NOP
+079C  EC66     CALL 0xCCC, 0
+079E  F006     NOP
+090A  C00D     MOVFF fmt, FSR2
+090C  FFD9     NOP
+090E  C00E     MOVFF __Hpowerup, FSR2H
+0910  FFDA     NOP
+0912  CFDE     MOVFF POSTINC2, TBLPTR
+0914  FFF6     NOP
+0916  CFDE     MOVFF POSTINC2, TBLPTRH
+0918  FFF7     NOP
+091A  0E05     MOVLW 0x5
+091C  64F7     CPFSGT TBLPTRH, ACCESS
+091E  D003     BRA 0x926
+0920  0008     TBLRD*
+0922  50F5     MOVF TABLAT, W, ACCESS
+0924  D005     BRA 0x930
+0926  CFF6     MOVFF TBLPTR, FSR1
+0928  FFE1     NOP
+092A  CFF7     MOVFF TBLPTRH, FSR1H
+092C  FFE2     NOP
+092E  50E7     MOVF INDF1, W, ACCESS
+0930  6E11     MOVWF 0x11, ACCESS
+0932  5011     MOVF 0x11, W, ACCESS
+0934  6E02     MOVWF ___rparam_used, ACCESS
+0936  6A03     CLRF __activetblptr, ACCESS
+0938  C00B     MOVFF fp, fp
+093A  F004     NOP
+093C  C00C     MOVFF 0xC, counter
+093E  F005     NOP
+0940  ECB2     CALL 0xD64, 0
+0942  F006     NOP
+1385:              ++*fmt;
+07A0  C0AC     MOVFF fmt, FSR2
+07A2  FFD9     NOP
+07A4  C0AD     MOVFF 0xAD, FSR2H
+07A6  FFDA     NOP
+07A8  2ADE     INCF POSTINC2, F, ACCESS
+07AA  0E00     MOVLW 0x0
+07AC  22DD     ADDWFC POSTDEC2, F, ACCESS
+07AE  EFA2     GOTO 0x744
+07B0  F003     NOP
+0944  C00D     MOVFF fmt, FSR2
+0946  FFD9     NOP
+0948  C00E     MOVFF __Hpowerup, FSR2H
+094A  FFDA     NOP
+094C  2ADE     INCF POSTINC2, F, ACCESS
+094E  0E00     MOVLW 0x0
+0950  22DD     ADDWFC POSTDEC2, F, ACCESS
+0952  EF76     GOTO 0x8EC
+0954  F004     NOP
+1386:              return 1;
+1387:          }
+07B2  0012     RETURN 0
+0956  0012     RETURN 0
+1388:          #endif
+1389:          
+1390:          int vfprintf(FILE *fp, const char *fmt, va_list ap)
+1391:          {
+1392:          #ifdef _VFPF_CONVERT
+1393:              char *cfmt;
+1394:          
+1395:              cfmt = (char *)fmt;
+0DFA  C0B6     MOVFF fmt, cfmt
+0DFC  F0BA     NOP
+0DFE  C0B7     MOVFF 0xB7, 0xBB
+0E00  F0BB     NOP
+0E70  C017     MOVFF fmt, cfmt
+1396:              nout = 0;
+0E02  0E00     MOVLW 0x0
+0E04  6E39     MOVWF 0x39, ACCESS
+0E06  0E00     MOVLW 0x0
+0E08  6E38     MOVWF nout, ACCESS
+0E78  0E00     MOVLW 0x0
+0E7A  6E39     MOVWF 0x39, ACCESS
+0E7C  0E00     MOVLW 0x0
+0E7E  6E38     MOVWF nout, ACCESS
+1397:              while (*cfmt) {
+0E0A  EF1B     GOTO 0xE36
+0E0C  F007     NOP
+0E36  C0BA     MOVFF cfmt, TBLPTR
+0E38  FFF6     NOP
+0E3A  C0BB     MOVFF 0xBB, TBLPTRH
+0E3C  FFF7     NOP
+0E3E  6AF8     CLRF TBLPTRU, ACCESS
+0E40  0E05     MOVLW 0x5
+0E42  64F7     CPFSGT TBLPTRH, ACCESS
+0E44  D003     BRA 0xE4C
+0E46  0008     TBLRD*
+0E48  50F5     MOVF TABLAT, W, ACCESS
+0E4A  D005     BRA 0xE56
+0E4C  CFF6     MOVFF TBLPTR, FSR1
+0E4E  FFE1     NOP
+0E50  CFF7     MOVFF TBLPTRH, FSR1H
+0E52  FFE2     NOP
+0E54  50E7     MOVF INDF1, W, ACCESS
+0E56  0900     IORLW 0x0
+0E58  A4D8     BTFSS STATUS, 2, ACCESS
+0E5A  EF31     GOTO 0xE62
+0E5C  F007     NOP
+0E5E  EF33     GOTO 0xE66
+0E60  F007     NOP
+0E62  EF07     GOTO 0xE0E
+0E64  F007     NOP
+0E80  EF54     GOTO 0xEA8
+0E82  F007     NOP
+0EA8  C01B     MOVFF cfmt, TBLPTR
+0EAA  FFF6     NOP
+0EAC  C01C     MOVFF 0x1C, TBLPTRH
+0EAE  FFF7     NOP
+0EB0  6AF8     CLRF TBLPTRU, ACCESS
+0EB2  0E05     MOVLW 0x5
+0EB4  64F7     CPFSGT TBLPTRH, ACCESS
+0EB6  D003     BRA 0xEBE
+0EB8  0008     TBLRD*
+0EBA  50F5     MOVF TABLAT, W, ACCESS
+0EBC  D005     BRA 0xEC8
+0EBE  CFF6     MOVFF TBLPTR, FSR1
+0EC0  FFE1     NOP
+0EC2  CFF7     MOVFF TBLPTRH, FSR1H
+0EC4  FFE2     NOP
+0EC6  50E7     MOVF INDF1, W, ACCESS
+0EC8  0900     IORLW 0x0
+0ECA  A4D8     BTFSS STATUS, 2, ACCESS
+0ECC  EF6A     GOTO 0xED4
+0ECE  F007     NOP
+0ED0  EF6C     GOTO 0xED8
+0ED2  F007     NOP
+0ED4  EF42     GOTO 0xE84
+0ED6  F007     NOP
+1398:                  nout += vfpfcnvrt(fp, &cfmt, ap);
+0E0E  C0B4     MOVFF fp, fp
+0E10  F0AA     NOP
+0E12  C0B5     MOVFF 0xB5, 0xAB
+0E14  F0AB     NOP
+0E16  0EBA     MOVLW 0xBA
+0E18  0100     MOVLB 0x0
+0E1A  6FAC     MOVWF fmt, BANKED
+0E1C  0E00     MOVLW 0x0
+0E1E  6FAD     MOVWF 0xAD, BANKED
+0E20  C0B8     MOVFF ap, ap
+0E22  F0AE     NOP
+0E24  C0B9     MOVFF 0xB9, 0xAF
+0E26  F0AF     NOP
+0E28  EC04     CALL 0x608, 0
+0E2A  F003     NOP
+0E2C  0100     MOVLB 0x0
+0E2E  51AA     MOVF fp, W, BANKED
+0E30  2638     ADDWF nout, F, ACCESS
+0E32  51AB     MOVF 0xAB, W, BANKED
+0E34  2239     ADDWFC 0x39, F, ACCESS
+0E84  C015     MOVFF fp, fp
+0E86  F00B     NOP
+0E88  C016     MOVFF 0x16, 0xC
+0E8A  F00C     NOP
+0E8C  0E1B     MOVLW 0x1B
+0E8E  6E0D     MOVWF fmt, ACCESS
+0E90  0E00     MOVLW 0x0
+0E92  6E0E     MOVWF __Hpowerup, ACCESS
+0E94  C019     MOVFF ap, __Hpowerup
+0E96  F00F     NOP
+0E98  C01A     MOVFF 0x1A, 0x10
+0E9A  F010     NOP
+0E9C  ECDA     CALL 0x7B4, 0
+0E9E  F003     NOP
+0EA0  500B     MOVF fp, W, ACCESS
+0EA2  2638     ADDWF nout, F, ACCESS
+0EA4  500C     MOVF 0xC, W, ACCESS
+0EA6  2239     ADDWFC 0x39, F, ACCESS
+1399:              }
+1400:              return nout;
+0E66  C038     MOVFF nout, fp
+0E68  F0B4     NOP
+0E6A  C039     MOVFF 0x39, 0xB5
+0E6C  F0B5     NOP
+0ED8  C038     MOVFF nout, fp
+0EDA  F015     NOP
+0EDC  C039     MOVFF 0x39, 0x16
+0EDE  F016     NOP
+1401:          #else
+1402:              return fputs(fmt, fp);
+1403:          #endif
+1404:          }
+0E6E  0012     RETURN 0
+0EE0  0012     RETURN 0
+---  C:/Program Files/Microchip/xc8/v2.32/pic/sources/c99/common/awmod.c  -------------------------------
+1:             // integer signed unsigned modulus
+2:             
+3:             signed int
+4:             #ifdef __PICC__
+5:             __awmod(signed int divisor, signed int dividend)
+6:             #else
+7:             __awmod(signed int dividend, signed int divisor)
+8:             #endif
+9:             {
+10:            	unsigned char	counter, sign;
+11:            
+12:            	sign = 0;
+0C1C  0E00     MOVLW 0x0
+0C1E  6E06     MOVWF sign, ACCESS
+13:            	if(dividend < 0) {
+0C20  BE02     BTFSC ___rparam_used, 7, ACCESS
+0C22  EF17     GOTO 0xC2E
+0C24  F006     NOP
+0C26  EF15     GOTO 0xC2A
+0C28  F006     NOP
+0C2A  EF1D     GOTO 0xC3A
+0C2C  F006     NOP
+14:            		dividend = -dividend;
+0C2E  6C01     NEGF __pcstackCOMRAM, ACCESS
+0C30  1E02     COMF ___rparam_used, F, ACCESS
+0C32  B0D8     BTFSC STATUS, 0, ACCESS
+0C34  2A02     INCF ___rparam_used, F, ACCESS
+15:            		sign = 1;
+0C36  0E01     MOVLW 0x1
+0C38  6E06     MOVWF sign, ACCESS
+16:            	}
+17:            	if(divisor < 0)
+0C3A  BE04     BTFSC fp, 7, ACCESS
+0C3C  EF24     GOTO 0xC48
+0C3E  F006     NOP
+0C40  EF22     GOTO 0xC44
+0C42  F006     NOP
+0C44  EF28     GOTO 0xC50
+0C46  F006     NOP
+18:            		divisor = -divisor;
+0C48  6C03     NEGF __activetblptr, ACCESS
+0C4A  1E04     COMF fp, F, ACCESS
+0C4C  B0D8     BTFSC STATUS, 0, ACCESS
+0C4E  2A04     INCF fp, F, ACCESS
+19:            	if(divisor != 0) {
+0C50  5003     MOVF __activetblptr, W, ACCESS
+0C52  1004     IORWF fp, W, ACCESS
+0C54  B4D8     BTFSC STATUS, 2, ACCESS
+0C56  EF2F     GOTO 0xC5E
+0C58  F006     NOP
+0C5A  EF31     GOTO 0xC62
+0C5C  F006     NOP
+0C5E  EF55     GOTO 0xCAA
+0C60  F006     NOP
+20:            		counter = 1;
+0C62  0E01     MOVLW 0x1
+0C64  6E05     MOVWF counter, ACCESS
+21:            		while(((unsigned int)divisor & 0x8000U) == 0) {
+0C66  EF39     GOTO 0xC72
+0C68  F006     NOP
+0C72  AE04     BTFSS fp, 7, ACCESS
+0C74  EF3E     GOTO 0xC7C
+0C76  F006     NOP
+0C78  EF40     GOTO 0xC80
+0C7A  F006     NOP
+0C7C  EF35     GOTO 0xC6A
+0C7E  F006     NOP
+22:            			divisor <<= 1;
+0C6A  90D8     BCF STATUS, 0, ACCESS
+0C6C  3603     RLCF __activetblptr, F, ACCESS
+0C6E  3604     RLCF fp, F, ACCESS
+23:            			counter++;
+0C70  2A05     INCF counter, F, ACCESS
+24:            		}
+25:            		do {
+26:            			if((unsigned int)divisor <= (unsigned int)dividend)
+0C80  5003     MOVF __activetblptr, W, ACCESS
+0C82  5C01     SUBWF __pcstackCOMRAM, W, ACCESS
+0C84  5004     MOVF fp, W, ACCESS
+0C86  5802     SUBWFB ___rparam_used, W, ACCESS
+0C88  A0D8     BTFSS STATUS, 0, ACCESS
+0C8A  EF49     GOTO 0xC92
+0C8C  F006     NOP
+0C8E  EF4B     GOTO 0xC96
+0C90  F006     NOP
+0C92  EF4F     GOTO 0xC9E
+0C94  F006     NOP
+27:            				dividend -= divisor;
+0C96  5003     MOVF __activetblptr, W, ACCESS
+0C98  5E01     SUBWF __pcstackCOMRAM, F, ACCESS
+0C9A  5004     MOVF fp, W, ACCESS
+0C9C  5A02     SUBWFB ___rparam_used, F, ACCESS
+28:            			*(unsigned int *)&divisor >>= 1;
+0C9E  90D8     BCF STATUS, 0, ACCESS
+0CA0  3204     RRCF fp, F, ACCESS
+0CA2  3203     RRCF __activetblptr, F, ACCESS
+29:            		} while(--counter != 0);
+0CA4  2E05     DECFSZ counter, F, ACCESS
+0CA6  EF40     GOTO 0xC80
+0CA8  F006     NOP
+30:            	}
+31:            	if(sign)
+0CAA  5006     MOVF sign, W, ACCESS
+0CAC  B4D8     BTFSC STATUS, 2, ACCESS
+0CAE  EF5B     GOTO 0xCB6
+0CB0  F006     NOP
+0CB2  EF5D     GOTO 0xCBA
+0CB4  F006     NOP
+0CB6  EF61     GOTO 0xCC2
+0CB8  F006     NOP
+32:            		dividend = -dividend;
+0CBA  6C01     NEGF __pcstackCOMRAM, ACCESS
+0CBC  1E02     COMF ___rparam_used, F, ACCESS
+0CBE  B0D8     BTFSC STATUS, 0, ACCESS
+0CC0  2A02     INCF ___rparam_used, F, ACCESS
+33:            	return dividend;
+0CC2  C001     MOVFF __pcstackCOMRAM, __pcstackCOMRAM
+0CC4  F001     NOP
+0CC6  C002     MOVFF ___rparam_used, ___rparam_used
+0CC8  F002     NOP
+34:            }
+0CCA  0012     RETURN 0
+---  C:/Program Files/Microchip/xc8/v2.32/pic/sources/c99/common/awdiv.c  -------------------------------
+1:             // integer signed division
+2:             
+3:             signed int
+4:             #ifdef __PICC__
+5:             __awdiv(signed int divisor, signed int dividend)
+6:             #else
+7:             __awdiv(signed int dividend, signed int divisor)
+8:             #endif
+9:             {
+10:            	signed int	quotient;
+11:            	unsigned char	counter, sign;
+12:            
+13:            	sign = 0;
+0AA2  0E00     MOVLW 0x0
+0AA4  6E06     MOVWF sign, ACCESS
+14:            	if(divisor < 0) {
+0AA6  BE04     BTFSC fp, 7, ACCESS
+0AA8  EF5A     GOTO 0xAB4
+0AAA  F005     NOP
+0AAC  EF58     GOTO 0xAB0
+0AAE  F005     NOP
+0AB0  EF60     GOTO 0xAC0
+0AB2  F005     NOP
+15:            		divisor = -divisor;
+0AB4  6C03     NEGF __activetblptr, ACCESS
+0AB6  1E04     COMF fp, F, ACCESS
+0AB8  B0D8     BTFSC STATUS, 0, ACCESS
+0ABA  2A04     INCF fp, F, ACCESS
+16:            		sign = 1;
+0ABC  0E01     MOVLW 0x1
+0ABE  6E06     MOVWF sign, ACCESS
+17:            	}
+18:            	if(dividend < 0) {
+0AC0  BE02     BTFSC ___rparam_used, 7, ACCESS
+0AC2  EF67     GOTO 0xACE
+0AC4  F005     NOP
+0AC6  EF65     GOTO 0xACA
+0AC8  F005     NOP
+0ACA  EF6D     GOTO 0xADA
+0ACC  F005     NOP
+19:            		dividend = -dividend;
+0ACE  6C01     NEGF __pcstackCOMRAM, ACCESS
+0AD0  1E02     COMF ___rparam_used, F, ACCESS
+0AD2  B0D8     BTFSC STATUS, 0, ACCESS
+0AD4  2A02     INCF ___rparam_used, F, ACCESS
+20:            		sign ^= 1;
+0AD6  0E01     MOVLW 0x1
+0AD8  1A06     XORWF sign, F, ACCESS
+21:            	}
+22:            	quotient = 0;
+0ADA  0E00     MOVLW 0x0
+0ADC  6E08     MOVWF _timer_overflow_interrupt, ACCESS
+0ADE  0E00     MOVLW 0x0
+0AE0  6E07     MOVWF quotient, ACCESS
+23:            	if(divisor != 0) {
+0AE2  5003     MOVF __activetblptr, W, ACCESS
+0AE4  1004     IORWF fp, W, ACCESS
+0AE6  B4D8     BTFSC STATUS, 2, ACCESS
+0AE8  EF78     GOTO 0xAF0
+0AEA  F005     NOP
+0AEC  EF7A     GOTO 0xAF4
+0AEE  F005     NOP
+0AF0  EFA2     GOTO 0xB44
+0AF2  F005     NOP
+24:            		counter = 1;
+0AF4  0E01     MOVLW 0x1
+0AF6  6E05     MOVWF counter, ACCESS
+25:            		while(((unsigned int)divisor & 0x8000U) == 0) {
+0AF8  EF82     GOTO 0xB04
+0AFA  F005     NOP
+0B04  AE04     BTFSS fp, 7, ACCESS
+0B06  EF87     GOTO 0xB0E
+0B08  F005     NOP
+0B0A  EF89     GOTO 0xB12
+0B0C  F005     NOP
+0B0E  EF7E     GOTO 0xAFC
+0B10  F005     NOP
+26:            			divisor <<= 1;
+0AFC  90D8     BCF STATUS, 0, ACCESS
+0AFE  3603     RLCF __activetblptr, F, ACCESS
+0B00  3604     RLCF fp, F, ACCESS
+27:            			counter++;
+0B02  2A05     INCF counter, F, ACCESS
+28:            		}
+29:            		do {
+30:            			quotient <<= 1;
+0B12  90D8     BCF STATUS, 0, ACCESS
+0B14  3607     RLCF quotient, F, ACCESS
+0B16  3608     RLCF _timer_overflow_interrupt, F, ACCESS
+31:            			if((unsigned int)divisor <= (unsigned int)dividend) {
+0B18  5003     MOVF __activetblptr, W, ACCESS
+0B1A  5C01     SUBWF __pcstackCOMRAM, W, ACCESS
+0B1C  5004     MOVF fp, W, ACCESS
+0B1E  5802     SUBWFB ___rparam_used, W, ACCESS
+0B20  A0D8     BTFSS STATUS, 0, ACCESS
+0B22  EF95     GOTO 0xB2A
+0B24  F005     NOP
+0B26  EF97     GOTO 0xB2E
+0B28  F005     NOP
+0B2A  EF9C     GOTO 0xB38
+0B2C  F005     NOP
+32:            				dividend -= divisor;
+0B2E  5003     MOVF __activetblptr, W, ACCESS
+0B30  5E01     SUBWF __pcstackCOMRAM, F, ACCESS
+0B32  5004     MOVF fp, W, ACCESS
+0B34  5A02     SUBWFB ___rparam_used, F, ACCESS
+33:            				quotient |= 1;
+0B36  8007     BSF quotient, 0, ACCESS
+34:            			}
+35:            			*(unsigned int *)&divisor >>= 1;
+0B38  90D8     BCF STATUS, 0, ACCESS
+0B3A  3204     RRCF fp, F, ACCESS
+0B3C  3203     RRCF __activetblptr, F, ACCESS
+36:            		} while(--counter != 0);
+0B3E  2E05     DECFSZ counter, F, ACCESS
+0B40  EF89     GOTO 0xB12
+0B42  F005     NOP
+37:            	}
+38:            	if(sign)
+0B44  5006     MOVF sign, W, ACCESS
+0B46  B4D8     BTFSC STATUS, 2, ACCESS
+0B48  EFA8     GOTO 0xB50
+0B4A  F005     NOP
+0B4C  EFAA     GOTO 0xB54
+0B4E  F005     NOP
+0B50  EFAE     GOTO 0xB5C
+0B52  F005     NOP
+39:            		quotient = -quotient;
+0B54  6C07     NEGF quotient, ACCESS
+0B56  1E08     COMF _timer_overflow_interrupt, F, ACCESS
+0B58  B0D8     BTFSC STATUS, 0, ACCESS
+0B5A  2A08     INCF _timer_overflow_interrupt, F, ACCESS
+40:            	return quotient;
+0B5C  C007     MOVFF quotient, __pcstackCOMRAM
+0B5E  F001     NOP
+0B60  C008     MOVFF _timer_overflow_interrupt, ___rparam_used
+0B62  F002     NOP
+41:            }
+0B64  0012     RETURN 0
